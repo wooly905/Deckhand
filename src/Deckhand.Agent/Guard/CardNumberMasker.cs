@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -72,7 +73,8 @@ public static partial class CardNumberMasker
         var sum = 0;
         for (var i = 0; i < digits.Length; i++)
         {
-            var digit = digits[digits.Length - 1 - i] - '0';
+            // \d also matches non-ASCII decimal digits, for example full-width digits from an IME.
+            var digit = CharUnicodeInfo.GetDecimalDigitValue(digits[digits.Length - 1 - i]);
             if (i % 2 == 1)
             {
                 digit *= 2;
@@ -89,8 +91,9 @@ public static partial class CardNumberMasker
     }
 
     // A run of at least 13 digits with single optional spaces or dashes between them, not touching
-    // other digits. There is no upper bound: card numbers inside longer runs are found by MaskCandidate.
-    [GeneratedRegex(@"(?<![\d-])\d(?:[ -]?\d){12,}(?![\d])")]
+    // other digits (a dash counts as touching only after a digit, so "ref-4111..." is still found).
+    // There is no upper bound: card numbers inside longer runs are found by MaskCandidate.
+    [GeneratedRegex(@"(?<!\d)(?<!\d-)\d(?:[ -]?\d){12,}(?![\d])")]
     private static partial Regex Candidate();
 
     [GeneratedRegex(@"\d+")]

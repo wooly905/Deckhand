@@ -46,6 +46,14 @@ public class CardNumberMaskerTests
         Assert.Equal(string.Format(expected, CardNumberMasker.Replacement), CardNumberMasker.Mask(text));
 
     [Theory]
+    [InlineData("pay ４１１１１１１１１１１１１１１１ now")]          // full-width digits from an IME
+    [InlineData("pay ５５５５ ５５５５ ５５５５ ４４４４ now")]
+    [InlineData("pay ３７８２８２２４６３１０００５ now")]
+    [InlineData("pay ref-4111111111111111 now")]
+    public void Full_width_digits_and_a_dash_prefix_are_masked(string text) =>
+        Assert.DoesNotContain(text.Split(' ')[1], CardNumberMasker.Mask(text));
+
+    [Theory]
     [InlineData("6 4111 1111 1111 1111")]     // "6 4111 1111 1111" also passes Luhn
     [InlineData("14 4111 1111 1111 1111")]
     [InlineData("48 5555 5555 5555 4444 99")]
