@@ -119,6 +119,48 @@ public class GuardedAIFunctionTests
     }
 
     [Fact]
+    public async Task Stop_before_the_tool_starts_writes_no_audit_entry()
+    {
+        var h = new Harness(_ => "ok");
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await h.Guard.InvokeAsync(new AIFunctionArguments { ["x"] = "a" }, cts.Token));
+
+        Assert.Empty(h.Audit.Entries);
+        Assert.Equal(0, h.Runs);
+    }
+
+    [Fact]
+    public async Task Stop_while_the_tool_runs_is_audited_and_rethrown()
+    {
+        using var cts = new CancellationTokenSource();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalog = new ToolCatalog();
+        catalog.Add(AIFunctionFactory.Create(async (CancellationToken token) =>
+            {
+                started.SetResult();
+                await Task.Delay(Timeout.Infinite, token);
+                return "late";
+            }, "net_ping"),
+            "network", RiskLevel.Change, timeout: TimeSpan.FromMinutes(1));
+        var state = new ToolSelectionState(catalog, 14);
+        state.Activate("group:network", ["net_ping"]);
+        var ledger = new ApprovalLedger { CurrentRequest = "do it" };
+        var audit = new ListAuditLog();
+        var guard = new GuardedAIFunction(catalog.Find("net_ping")!, state, new CallTracker(), ledger, audit);
+
+        var call = guard.InvokeAsync(new AIFunctionArguments(), cts.Token).AsTask();
+        await started.Task.WaitAsync(Ct);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await call);
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal(("call", "net_ping", "do it", false, "missing"), (entry.Kind, entry.Tool, entry.Request, entry.Success, entry.Decision));
+    }
+
+    [Fact]
     public async Task Long_output_is_cut_and_says_so()
     {
         var h = new Harness(_ => new string('y', 4000));

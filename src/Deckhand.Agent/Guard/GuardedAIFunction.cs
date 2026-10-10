@@ -57,7 +57,18 @@ public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state,
         }
 
         state.MarkUsed(entry.Name);
-        var (text, success) = await RunAsync(arguments, cancellationToken);
+        string text;
+        bool success;
+        try
+        {
+            (text, success) = await RunAsync(arguments, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopped while the tool ran: the tool may already have changed something, so keep a record.
+            audit.Write(new AuditEntry(DateTimeOffset.Now, "call", ledger.CurrentRequest, entry.Name, argumentsJson, entry.Risk.ToString(), decision, false));
+            throw;
+        }
 
         if (tracker.RecordResult(success) >= 2)
         {
