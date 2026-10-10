@@ -151,4 +151,61 @@ public class AgentRunnerTests
         Assert.Equal(RunStatus.Failed, result.Status);
         Assert.StartsWith("The model service is busy or not available.", result.Text);
     }
+    [Fact]
+    public async Task Stop_while_the_card_is_open_leaves_the_conversation_usable()
+    {
+        var model = new ScriptedChatClient()
+            .Reply(ToolStep("enable_tools", """{"group":"personalize"}"""))
+            .Reply(ToolStep("wallpaper_set", """{"path":"C:\\b.jpg"}"""))
+            .Reply(Final("Hello."));
+        var (runner, _, audit, prompter) = await Create(model);
+        using var cts = new CancellationTokenSource();
+        prompter.AskAsync(default!, default!, Ct).ReturnsForAnyArgs<Task<ApprovalAnswer>>(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+
+        var stopped = await runner.RunAsync("set wallpaper", cancellationToken: cts.Token);
+        var next = await runner.RunAsync("say hello", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Cancelled, stopped.Status);
+        Assert.Equal(new RunResult(RunStatus.Answered, "Hello.", 1), next);
+        Assert.DoesNotContain(audit.Entries, e => e is { Kind: "call", Tool: "wallpaper_set" });
+    }
+
+    [Fact]
+    public async Task Stop_after_approval_leaves_the_conversation_usable()
+    {
+        using var cts = new CancellationTokenSource();
+        var model = new ScriptedChatClient()
+            .Reply(ToolStep("enable_tools", """{"group":"personalize"}"""))
+            .Reply(ToolStep("wallpaper_set", """{"path":"C:\\b.jpg"}"""))
+            .ReplyWith((_, _) =>
+            {
+                cts.Cancel();
+                throw new OperationCanceledException(cts.Token);
+            })
+            .Reply(Final("Hello."));
+        var (runner, _, _, prompter) = await Create(model);
+        prompter.AskAsync(default!, default!, Ct).ReturnsForAnyArgs(ApprovalAnswer.Allow);
+
+        var stopped = await runner.RunAsync("set wallpaper", cancellationToken: cts.Token);
+        var next = await runner.RunAsync("say hello", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Cancelled, stopped.Status);
+        Assert.Equal(new RunResult(RunStatus.Answered, "Hello.", 1), next);
+    }
+
+    [Fact]
+    public async Task Model_timeout_is_reported_as_failed()
+    {
+        var model = new ScriptedChatClient().ReplyWith((_, _) => throw new TaskCanceledException("The operation was cancelled because it exceeded the configured timeout."));
+        var (runner, _, _, _) = await Create(model);
+
+        var result = await runner.RunAsync("hi", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Failed, result.Status);
+        Assert.StartsWith("The model service is busy or not available.", result.Text);
+    }
 }

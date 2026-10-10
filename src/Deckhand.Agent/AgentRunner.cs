@@ -34,6 +34,11 @@ public interface IApprovalPrompter
 public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter approvals, IAuditLog audit)
 {
     private const int MaxReasonChars = 200;
+    private const string InterruptedReason = "The request was stopped before this action finished.";
+
+    // Approval requests left in the session history by a run that was stopped or failed.
+    // They are answered (denied) at the start of the next run, or the chat client rejects the history.
+    private List<ToolApprovalRequestContent>? _unanswered;
 
     public bool AwaitingReply => session.Selection.AwaitingReply;
 
@@ -48,13 +53,21 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
         }
 
         session.Selection.AwaitingReply = false;
-        var message = isReply ? new ChatMessage(ChatRole.User, text) : TranscriptWriter.NewRequest(text);
+        var messages = new List<ChatMessage>();
+        if (_unanswered is { Count: > 0 } unanswered)
+        {
+            messages.Add(new ChatMessage(ChatRole.User, unanswered.Select(r => (AIContent)r.CreateResponse(false, InterruptedReason)).ToList()));
+        }
+
+        messages.Add(isReply ? new ChatMessage(ChatRole.User, text) : TranscriptWriter.NewRequest(text));
 
         try
         {
-            var response = await session.Agent.RunAsync(message, session.Session, cancellationToken: cancellationToken);
+            var response = await session.Agent.RunAsync(messages, session.Session, cancellationToken: cancellationToken);
+            _unanswered = null;
             while (response.Messages.SelectMany(m => m.Contents).OfType<ToolApprovalRequestContent>().ToList() is { Count: > 0 } requests)
             {
+                _unanswered = requests;
                 var answers = new List<AIContent>();
                 foreach (var request in requests)
                 {
@@ -62,6 +75,7 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
                 }
 
                 response = await session.Agent.RunAsync(new ChatMessage(ChatRole.User, answers), session.Session, cancellationToken: cancellationToken);
+                _unanswered = null;
             }
 
             var asked = session.Steps.LastFinalAction == StepSchemaBuilder.AskUser;
@@ -72,8 +86,9 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
         {
             return new RunResult(RunStatus.Cancelled, "Stopped.", session.Selection.StepCount);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            // An OperationCanceledException without the caller's token is a model-side timeout.
             var reason = ex.Message.Length > MaxReasonChars ? ex.Message[..MaxReasonChars] : ex.Message;
             return new RunResult(RunStatus.Failed, $"The model service is busy or not available. {reason}", session.Selection.StepCount);
         }
