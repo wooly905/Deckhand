@@ -1336,7 +1336,7 @@ public class TranscriptWriterTests
         var history = new List<ChatMessage>
         {
             TranscriptWriter.NewRequest("first"), Call("c1", "net_ping", "t"), Result("c1", "r"),
-            new(ChatRole.Assistant, "First answer."),
+            new(ChatRole.Assistant, [new TextReasoningContent("done"), new TextContent("First answer.")]),
             TranscriptWriter.NewRequest("second"),
         };
 
@@ -1472,7 +1472,7 @@ public sealed class TranscriptWriter(int contextWindow)
         for (var i = earlier.Count - 1; i >= 0; i--)
         {
             var message = earlier[i];
-            var textOnly = message.Contents.All(c => c is TextContent) && !string.IsNullOrWhiteSpace(message.Text);
+            var textOnly = message.Contents.All(c => c is TextContent or TextReasoningContent) && !string.IsNullOrWhiteSpace(message.Text);
             if (!textOnly || (message.Role != ChatRole.User && message.Role != ChatRole.Assistant))
             {
                 continue;

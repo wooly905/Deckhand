@@ -44,7 +44,7 @@ public class TranscriptWriterTests
         var history = new List<ChatMessage>
         {
             TranscriptWriter.NewRequest("first"), Call("c1", "net_ping", "t"), Result("c1", "r"),
-            new(ChatRole.Assistant, "First answer."),
+            new(ChatRole.Assistant, [new TextReasoningContent("done"), new TextContent("First answer.")]),
             TranscriptWriter.NewRequest("second"),
         };
 
