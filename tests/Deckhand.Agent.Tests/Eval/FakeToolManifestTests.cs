@@ -1,3 +1,4 @@
+using Deckhand.Agent.Tests.Fakes;
 using Deckhand.Agent.Tools;
 using Deckhand.Eval;
 
@@ -5,21 +6,10 @@ namespace Deckhand.Agent.Tests.Eval;
 
 public class FakeToolManifestTests
 {
-    private static string RepoFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Deckhand.slnx")))
-        {
-            dir = dir.Parent;
-        }
-
-        return Path.Combine(dir!.FullName, relative);
-    }
-
     [Fact]
     public void Manifest_loads_and_builds_a_catalog_with_groups_and_risk()
     {
-        var specs = FakeToolManifest.Load(RepoFile("eval/tools.json"));
+        var specs = FakeToolManifest.Load(RepoPaths.File("eval/tools.json"));
         var catalog = FakeToolManifest.BuildCatalog(specs, new Dictionary<string, string>(), []);
 
         Assert.Equal(RiskLevel.Change, catalog.Find("wallpaper_set")!.Risk);
@@ -31,7 +21,7 @@ public class FakeToolManifestTests
     [Fact]
     public async Task Fake_tool_records_the_call_and_returns_the_mock_output()
     {
-        var specs = FakeToolManifest.Load(RepoFile("eval/tools.json"));
+        var specs = FakeToolManifest.Load(RepoPaths.File("eval/tools.json"));
         var calls = new List<ToolCallRecord>();
         var catalog = FakeToolManifest.BuildCatalog(specs, new Dictionary<string, string> { ["net_ping"] = "timeout" }, calls);
 
@@ -46,8 +36,8 @@ public class FakeToolManifestTests
     [Fact]
     public void Every_skill_tool_exists_in_the_manifest()
     {
-        var names = FakeToolManifest.Load(RepoFile("eval/tools.json")).Select(s => s.Name).ToHashSet();
-        var skills = Deckhand.Agent.Skills.SkillCatalog.Load([(RepoFile("skills"), true)]);
+        var names = FakeToolManifest.Load(RepoPaths.File("eval/tools.json")).Select(s => s.Name).ToHashSet();
+        var skills = Deckhand.Agent.Skills.SkillCatalog.Load([(RepoPaths.File("skills"), true)]);
 
         Assert.Empty(skills.Problems);
         Assert.All(skills.Skills.SelectMany(s => s.Tools), tool => Assert.Contains(tool, names));
