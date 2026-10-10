@@ -28,4 +28,13 @@ public class CardNumberMaskerTests
 
         Assert.Equal($"a {CardNumberMasker.Replacement} b {CardNumberMasker.Replacement} c", masked);
     }
+
+    [Theory]
+    [InlineData("pay 4111111111111111 123 ok", "pay {0} 123 ok")]
+    [InlineData("ref 12 4111111111111111", "ref 12 {0}")]
+    [InlineData("card 4111 1111 1111 1111 123 exp 12-28", "card {0} 123 exp 12-28")]
+    [InlineData("1234 4111111111111111 5678", "1234 {0} 5678")]
+    [InlineData("4111-1111-1111-1111-12", "{0}-12")]
+    public void Card_numbers_next_to_short_digit_groups_are_masked(string text, string expected) =>
+        Assert.Equal(string.Format(expected, CardNumberMasker.Replacement), CardNumberMasker.Mask(text));
 }
