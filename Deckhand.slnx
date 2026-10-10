@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Deckhand.Agent/Deckhand.Agent.csproj" />
+    <Project Path="src/Deckhand.Eval/Deckhand.Eval.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Deckhand.Agent.Tests/Deckhand.Agent.Tests.csproj" />
+  </Folder>
+</Solution>
