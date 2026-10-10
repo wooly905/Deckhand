@@ -90,6 +90,40 @@ public class ToolScopeChatClientTests
     }
 
     [Fact]
+    public async Task Duplicate_call_ids_in_the_history_do_not_break_the_call()
+    {
+        var h = new Harness();
+        ChatMessage[] history =
+        [
+            new(ChatRole.User, "check app"),
+            new(ChatRole.Assistant, [new FunctionCallContent("call_0", "app_find", new Dictionary<string, object?>())]),
+            new(ChatRole.Tool, [new FunctionResultContent("call_0", "found")]),
+            .. LoadSkillHistory("call_0"),
+        ];
+
+        var options = await h.Send(history);
+
+        Assert.Equal(["app_find", "net_ping", "net_dns_lookup", "load_skill"], options.Tools!.Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task A_load_skill_with_a_reused_call_id_is_still_processed()
+    {
+        var h = new Harness();
+        ChatMessage[] first =
+        [
+            new(ChatRole.User, "hi"),
+            new(ChatRole.Assistant, [new FunctionCallContent("call_0", "load_skill", new Dictionary<string, object?> { ["skillName"] = "no-such-skill" })]),
+            new(ChatRole.Tool, [new FunctionResultContent("call_0", "Skill not found.")]),
+        ];
+        await h.Send(first);
+
+        var options = await h.Send([.. first, .. LoadSkillHistory("call_0")]);
+
+        Assert.Equal(["app_find", "net_ping", "net_dns_lookup", "load_skill"], options.Tools!.Select(t => t.Name));
+    }
+
+    [Fact]
     public async Task Each_model_call_counts_one_step()
     {
         var h = new Harness();

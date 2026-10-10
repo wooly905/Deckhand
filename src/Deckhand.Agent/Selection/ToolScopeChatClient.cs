@@ -69,10 +69,9 @@ public sealed class ToolScopeChatClient(IChatClient inner, ToolSelectionState st
 
     private void ActivateLoadedSkills(List<ChatMessage> messages)
     {
-        var results = messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().ToDictionary(r => r.CallId);
-        foreach (var call in messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().Where(c => c.Name == "load_skill"))
+        foreach (var (key, call, result) in LoadSkillPairs(messages))
         {
-            if (!results.TryGetValue(call.CallId, out var result) || !_processedSkillCalls.Add(call.CallId))
+            if (!_processedSkillCalls.Add(key))
             {
                 continue;
             }
@@ -87,6 +86,36 @@ public sealed class ToolScopeChatClient(IChatClient inner, ToolSelectionState st
             if (activation.Removed.Count > 0)
             {
                 result.Result = TranscriptWriter.ObservationText(result.Result) + "\n\n" + activation.Describe();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pairs each load_skill call with the first later result that has the same call ID, in history order.
+    /// Native mode takes call IDs from the server, and some servers reuse them (for example call_0) across turns,
+    /// so the key is the call ID plus how many earlier load_skill pairs used the same ID.
+    /// </summary>
+    private static IEnumerable<(string Key, FunctionCallContent Call, FunctionResultContent Result)> LoadSkillPairs(List<ChatMessage> messages)
+    {
+        var pending = new Dictionary<string, Queue<FunctionCallContent>>();
+        var seen = new Dictionary<string, int>();
+        foreach (var content in messages.SelectMany(m => m.Contents))
+        {
+            switch (content)
+            {
+                case FunctionCallContent { Name: "load_skill" } call:
+                    if (!pending.TryGetValue(call.CallId, out var queue))
+                    {
+                        pending[call.CallId] = queue = new Queue<FunctionCallContent>();
+                    }
+
+                    queue.Enqueue(call);
+                    break;
+                case FunctionResultContent result when pending.TryGetValue(result.CallId, out var waiting) && waiting.Count > 0:
+                    var occurrence = seen.GetValueOrDefault(result.CallId);
+                    seen[result.CallId] = occurrence + 1;
+                    yield return ($"{result.CallId}#{occurrence}", waiting.Dequeue(), result);
+                    break;
             }
         }
     }
