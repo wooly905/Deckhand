@@ -46,7 +46,7 @@ Console.WriteLine($"M1 gate: {(passed ? "PASS" : "FAIL")}");
 
 var outFolder = options.GetValueOrDefault("out", "eval/results");
 Directory.CreateDirectory(outFolder);
-var outFile = Path.Combine(outFolder, $"{DateTime.Now:yyyyMMdd-HHmmss}-{settings.Chat.Model.Replace(':', '_')}.json");
+var outFile = Path.Combine(outFolder, ReportFileName.For(settings.Chat.Model, DateTime.Now));
 File.WriteAllText(outFile, JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true }));
 Console.WriteLine($"Report: {outFile}");
 return passed ? 0 : 1;
