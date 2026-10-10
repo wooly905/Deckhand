@@ -1,0 +1,71 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Deckhand.Agent.Selection;
+using Microsoft.Extensions.AI;
+
+namespace Deckhand.Agent.Tools;
+
+/// <summary>enable_tools: the model enables one tool group for this request.</summary>
+public sealed class EnableToolsFunction : AIFunction
+{
+    private static readonly Dictionary<string, string> GroupDescriptions = new()
+    {
+        ["system"] = "system information, performance, disks, processes, services",
+        ["files"] = "list, find, read, copy, move, delete files; folder permissions",
+        ["registry"] = "read and change HKCU registry values",
+        ["printers"] = "printers, default printer, print queue",
+        ["eventlog"] = "Windows event logs",
+        ["personalize"] = "wallpaper and theme",
+        ["devices"] = "volume, brightness, power plan",
+        ["settings"] = "open Settings pages, Control Panel items, management consoles",
+        ["network"] = "network configuration, ping, DNS, ports",
+        ["apps"] = "list apps, refresh the app index, find and install apps with winget",
+        ["browser"] = "control a web page in Chrome or Edge",
+        ["desktop_ui"] = "control an app window; draw in Paint",
+        ["scripts"] = "write and run a PowerShell or Python script when no other tool can do the task",
+        ["utilities"] = "calculator, clipboard, undo changes",
+        ["docs"] = "fetch documentation pages",
+    };
+
+    private readonly ToolCatalog _catalog;
+    private readonly ToolSelectionState _state;
+    private readonly JsonElement _schema;
+
+    public EnableToolsFunction(ToolCatalog catalog, ToolSelectionState state)
+    {
+        _catalog = catalog;
+        _state = state;
+        var groups = new JsonArray();
+        foreach (var group in catalog.Groups)
+        {
+            groups.Add(group);
+        }
+
+        _schema = JsonSerializer.SerializeToElement(new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject { ["group"] = new JsonObject { ["type"] = "string", ["enum"] = groups } },
+            ["required"] = new JsonArray("group"),
+        });
+
+        Description = "Enable one tool group for this request. Groups:\n" +
+            string.Join("\n", catalog.Groups.Select(g => $"{g}: {GroupDescriptions.GetValueOrDefault(g, g)}"));
+    }
+
+    public override string Name => "enable_tools";
+
+    public override string Description { get; }
+
+    public override JsonElement JsonSchema => _schema;
+
+    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+    {
+        var group = arguments.TryGetValue("group", out var value) ? value?.ToString() : null;
+        if (group is null || !_catalog.Groups.Contains(group))
+        {
+            return ValueTask.FromResult<object?>($"Unknown group '{group}'. Groups: {string.Join(", ", _catalog.Groups)}.");
+        }
+
+        return ValueTask.FromResult<object?>(_state.Activate($"group:{group}", _catalog.ToolsInGroup(group)).Describe());
+    }
+}
