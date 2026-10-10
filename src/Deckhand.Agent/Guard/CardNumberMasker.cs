@@ -10,59 +10,61 @@ public static partial class CardNumberMasker
 
     public static string Mask(string text) => Candidate().Replace(text, match => MaskCandidate(match.Value));
 
-    // The regex is greedy, so a card number next to a short digit group (for example a CVV
-    // after it, or a reference number before it) lands in one candidate that fails Luhn as a whole.
-    // When that happens, try every contiguous run of digit groups of 13–19 digits, longest first.
+    // The regex is greedy, so a card number next to another digit group (for example a CVV or an
+    // expiry date after it, or a quantity before it) lands in one candidate that fails Luhn as a whole.
+    // Every contiguous run of 13–19 digits that starts and ends on a group boundary is checked, and the
+    // union of all Luhn-valid runs is masked. Masking the union errs toward removing a neighboring
+    // group rather than leaving part of a card number visible when a shorter run passes Luhn by chance.
     private static string MaskCandidate(string candidate)
     {
         var groups = DigitGroup().Matches(candidate);
-        if (groups.Count == 0)
+        var spans = new List<(int Start, int End)>();
+        for (var first = 0; first < groups.Count; first++)
+        {
+            var digitCount = 0;
+            var digits = new StringBuilder();
+            for (var last = first; last < groups.Count; last++)
+            {
+                digitCount += groups[last].Length;
+                if (digitCount > 19)
+                {
+                    break;
+                }
+
+                digits.Append(groups[last].Value);
+                if (digitCount >= 13 && IsLuhnValid(digits.ToString()))
+                {
+                    AddSpan(spans, groups[first].Index, groups[last].Index + groups[last].Length);
+                }
+            }
+        }
+
+        if (spans.Count == 0)
         {
             return candidate;
         }
 
         var result = new StringBuilder();
         var copied = 0;
-        var i = 0;
-        while (i < groups.Count)
+        foreach (var (start, end) in spans)
         {
-            var end = FindCardEnd(groups, i);
-            if (end < 0)
-            {
-                i++;
-                continue;
-            }
-
-            var start = groups[i].Index;
             result.Append(candidate, copied, start - copied).Append(Replacement);
-            copied = groups[end].Index + groups[end].Length;
-            i = end + 1;
+            copied = end;
         }
 
         return result.Append(candidate, copied, candidate.Length - copied).ToString();
     }
 
-    // Returns the index of the last group of the longest card number starting at group `first`, or -1.
-    private static int FindCardEnd(MatchCollection groups, int first)
+    // Spans arrive ordered by start, so a new span can only overlap the last one.
+    private static void AddSpan(List<(int Start, int End)> spans, int start, int end)
     {
-        var digitCount = 0;
-        var last = first;
-        while (last < groups.Count && digitCount + groups[last].Length <= 19)
+        if (spans.Count > 0 && start < spans[^1].End)
         {
-            digitCount += groups[last].Length;
-            last++;
+            spans[^1] = (spans[^1].Start, Math.Max(spans[^1].End, end));
+            return;
         }
 
-        for (var end = last - 1; end >= first; end--)
-        {
-            var digits = string.Concat(Enumerable.Range(first, end - first + 1).Select(g => groups[g].Value));
-            if (digits.Length >= 13 && IsLuhnValid(digits))
-            {
-                return end;
-            }
-        }
-
-        return -1;
+        spans.Add((start, end));
     }
 
     private static bool IsLuhnValid(string digits)
@@ -86,8 +88,9 @@ public static partial class CardNumberMasker
         return sum % 10 == 0;
     }
 
-    // Digits with single optional spaces or dashes between them, not touching other digits.
-    [GeneratedRegex(@"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d])")]
+    // A run of at least 13 digits with single optional spaces or dashes between them, not touching
+    // other digits. There is no upper bound: card numbers inside longer runs are found by MaskCandidate.
+    [GeneratedRegex(@"(?<![\d-])\d(?:[ -]?\d){12,}(?![\d])")]
     private static partial Regex Candidate();
 
     [GeneratedRegex(@"\d+")]

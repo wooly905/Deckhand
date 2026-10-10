@@ -35,6 +35,20 @@ public class CardNumberMaskerTests
     [InlineData("card 4111 1111 1111 1111 123 exp 12-28", "card {0} 123 exp 12-28")]
     [InlineData("1234 4111111111111111 5678", "1234 {0} 5678")]
     [InlineData("4111-1111-1111-1111-12", "{0}-12")]
+    [InlineData("4111 1111 1111 1111 123", "{0} 123")]
+    [InlineData("4111111111111111 123", "{0} 123")]
+    [InlineData("4111 1111 1111 1111 12/28", "{0} 12/28")]
+    [InlineData("qty 2 4111 1111 1111 1111", "qty 2 {0}")]
+    [InlineData("qty 2 5555 5555 5555 4444 cvv 737", "qty 2 {0} cvv 737")]
+    [InlineData("1000 4111 1111 1111 1111", "1000 {0}")]          // more than 19 digits in the whole run
+    [InlineData("4111 1111 1111 1111 2028 737", "{0} 2028 737")]
     public void Card_numbers_next_to_short_digit_groups_are_masked(string text, string expected) =>
         Assert.Equal(string.Format(expected, CardNumberMasker.Replacement), CardNumberMasker.Mask(text));
+
+    [Theory]
+    [InlineData("6 4111 1111 1111 1111")]     // "6 4111 1111 1111" also passes Luhn
+    [InlineData("14 4111 1111 1111 1111")]
+    [InlineData("48 5555 5555 5555 4444 99")]
+    public void No_card_digits_survive_when_a_shorter_run_also_passes_luhn(string text) =>
+        Assert.DoesNotMatch(@"\d{4}", CardNumberMasker.Mask(text));
 }
