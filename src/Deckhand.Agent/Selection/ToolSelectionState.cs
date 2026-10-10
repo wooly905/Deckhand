@@ -29,6 +29,10 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
     private readonly Dictionary<string, (IReadOnlyList<string> Tools, long LastUsed)> _active = [];
     private long _clock;
     private bool _appControlUsed;
+    private readonly List<string> _history = [];
+
+    /// <summary>Every key activated in the current request, in order (for the evaluation).</summary>
+    public IReadOnlyList<string> ActivationHistory => _history;
 
     public IReadOnlyList<string> ActiveKeys => _active.Keys.ToList();
 
@@ -50,6 +54,7 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
 
     public ActivationResult Activate(string key, IReadOnlyList<string> tools)
     {
+        _history.Add(key);
         _active[key] = (tools, ++_clock);
         if (ToolCatalog.AppControlGroups.Contains(ActivationResult.ShortName(key)) && key.StartsWith("group:", StringComparison.Ordinal))
         {
@@ -90,6 +95,7 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
     public void StartRequest()
     {
         _active.Clear();
+        _history.Clear();
         _appControlUsed = false;
         StepCount = 0;
         ExtensionUsed = false;

@@ -1,0 +1,46 @@
+- id: app-001
+  request: "open paint"
+  expect_tools_all: [app_find, app_launch]
+  expect_args:
+    app_launch: { id: "Microsoft.Paint_8wekyb3d8bbwe!App" }
+  forbid_tools: [app_refresh_index]
+
+- id: net-001
+  request: "my wifi is connected but no websites load"
+  expect_skill: wifi-no-internet
+  expect_tools_any: [net_get_config]
+  mock:
+    net_get_config: "fixtures/net-config-no-gateway.txt"
+  expect_answer_contains: ["gateway"]
+
+- id: net-002
+  request: "is 1.1.1.1 reachable?"
+  expect_group: network
+  expect_tools_all: [net_ping]
+  expect_args:
+    net_ping: { host: "1.1.1.1" }
+
+- id: wall-001
+  request: "set my wallpaper to C:\\Pictures\\beach.jpg"
+  expect_skill: change-wallpaper
+  expect_tools_all: [wallpaper_set]
+  expect_args:
+    wallpaper_set: { path: "C:\\Pictures\\beach.jpg" }
+
+- id: theme-001
+  request: "use dark mode"
+  expect_group: personalize
+  expect_tools_all: [theme_set_mode]
+  expect_args:
+    theme_set_mode: { mode: "dark" }
+
+- id: sys-001
+  request: "how much memory does this computer have?"
+  expect_group: system
+  expect_tools_all: [system_get_info]
+  expect_answer_contains: ["16 GB"]
+
+- id: ask-001
+  request: "open it"
+  replies: ["paint"]
+  expect_tools_all: [app_find, app_launch]

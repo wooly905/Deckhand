@@ -110,4 +110,17 @@ public class ToolSelectionStateTests
         Assert.False(state.MustFinish);
         Assert.False(state.AwaitingReply);
     }
+
+    [Fact]
+    public void Activation_history_keeps_every_key_until_a_new_request()
+    {
+        var state = new ToolSelectionState(Catalog(), 4);
+        state.Activate("group:files", Tools("fs", 4));
+        state.Activate("group:network", Tools("net", 4)); // removes files
+
+        Assert.Equal(["group:files", "group:network"], state.ActivationHistory);
+
+        state.StartRequest();
+        Assert.Empty(state.ActivationHistory);
+    }
 }

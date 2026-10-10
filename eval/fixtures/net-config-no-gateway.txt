@@ -1,0 +1,2 @@
+Wi-Fi: 169.254.12.7, no default gateway, DNS none
+Ethernet: disconnected
