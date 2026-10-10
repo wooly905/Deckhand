@@ -5697,3 +5697,13 @@ Record here any MAF / MEAI member that differs from this plan (Task 1 instructio
 - Tooling (not MAF): xunit.v3 4.x uses Microsoft.Testing.Platform, which the .NET 10 SDK only runs with `"test": { "runner": "Microsoft.Testing.Platform" }` in global.json. With it, a project is selected with `--project`: use `dotnet test --project tests/Deckhand.Agent.Tests --filter "..."` instead of `dotnet test tests/Deckhand.Agent.Tests --filter "..."` (all tasks). `--filter "FullyQualifiedName~X"` still works.
 
 - Task 2 (not a rename): `using OpenAI.Chat;` together with `Microsoft.Extensions.AI` makes `ChatMessage` ambiguous (CS0104). Import only the needed OpenAI types with aliases, e.g. `using ChatCompletionOptions = OpenAI.Chat.ChatCompletionOptions;` (EndpointFactory.cs, EndpointFactoryTests.cs; any later file that needs OpenAI.Chat types).
+
+## Known gaps after the final review
+
+Open minor items from the whole-branch review. Handle them in M1b or M1c.
+
+- Native mode: `ask_user` is detected only in Structured mode (`StepEvents.LastFinalAction`). In Native mode a reply to a model question starts a new request. Decide before M1c.
+- `undo_last` without an id, called twice, undoes the first undo (the undo entry is the newest for the target). `UndoList` re-reads the journal for each entry.
+- The repeat check runs after the approval card, so a repeated `Change` call still shows a card before "You already ran this".
+- After two errors (`MustFinish`), Native mode does not refuse a tool call that the model still sends.
+- No end-to-end `AgentRunner` test for Stop while a tool runs (covered only in `GuardedAIFunctionTests`).

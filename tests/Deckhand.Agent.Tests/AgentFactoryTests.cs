@@ -73,6 +73,21 @@ public class AgentFactoryTests
     }
 
     [Fact]
+    public async Task All_mode_runs_a_non_base_tool_without_enabling_a_group()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyCall("net_ping", new Dictionary<string, object?> { ["host"] = "1.1.1.1" })
+            .Reply("Up.");
+        var deps = Dependencies(model, new ChatSettings { StepMode = StepMode.Native, ToolSelection = ToolSelectionMode.All });
+        var session = await new AgentFactory(deps).CreateSessionAsync(Ct);
+
+        await session.Agent.RunAsync("ping", session.Session, cancellationToken: Ct);
+
+        var result = model.Calls[1].Messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Single();
+        Assert.Equal("reply from 1.1.1.1", result.Result?.ToString());
+    }
+
+    [Fact]
     public async Task Change_tools_are_approval_wrapped_and_each_session_has_its_own_state()
     {
         var factory = new AgentFactory(Dependencies(new ScriptedChatClient()));

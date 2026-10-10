@@ -80,6 +80,23 @@ public class ToolSelectionStateTests
     }
 
     [Fact]
+    public void Skill_or_call_that_uses_app_control_tools_also_sets_the_sticky_limit()
+    {
+        var catalog = Catalog();
+        catalog.Add(AIFunctionFactory.Create(() => "", "browser_open"), "browser", RiskLevel.Read);
+        catalog.Add(AIFunctionFactory.Create(() => "", "ui_click"), "desktop_ui", RiskLevel.Change);
+
+        var bySkill = new ToolSelectionState(catalog, 14);
+        bySkill.Activate("skill:open-website", ["browser_open"]);
+        Assert.Equal(25, bySkill.StepLimit);
+
+        var byCall = new ToolSelectionState(catalog, 14) { AllToolsActive = true };
+        Assert.True(byCall.IsActive("ui_click"));
+        byCall.MarkUsed("ui_click");
+        Assert.Equal(25, byCall.StepLimit);
+    }
+
+    [Fact]
     public void Extension_adds_10_steps_one_time()
     {
         var state = new ToolSelectionState(Catalog(), 14);

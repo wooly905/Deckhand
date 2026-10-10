@@ -94,7 +94,9 @@ public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state,
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            var message = ex.Message.Length > MaxErrorChars ? ex.Message[..MaxErrorChars] : ex.Message;
+            // Mask before the cut, so a card number across the cut cannot survive as a short digit run.
+            var masked = CardNumberMasker.Mask(ex.Message);
+            var message = masked.Length > MaxErrorChars ? masked[..MaxErrorChars] : masked;
             return ("Error: " + message, false);
         }
     }

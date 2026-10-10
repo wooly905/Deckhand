@@ -40,11 +40,11 @@ public sealed class AgentFactory(AgentDependencies dependencies)
     public async Task<DeckhandSession> CreateSessionAsync(CancellationToken cancellationToken = default)
     {
         var d = dependencies;
-        var selection = new ToolSelectionState(d.Catalog, d.Chat.MaxActiveTools);
+        var groups = d.Chat.ToolSelection == ToolSelectionMode.Groups;
+        var selection = new ToolSelectionState(d.Catalog, d.Chat.MaxActiveTools) { AllToolsActive = !groups };
         var steps = new StepEvents();
         var calls = new CallTracker();
         var ledger = new ApprovalLedger();
-        var groups = d.Chat.ToolSelection == ToolSelectionMode.Groups;
 
         var builder = d.Model.AsBuilder()
             .UseFunctionInvocation(configure: f =>

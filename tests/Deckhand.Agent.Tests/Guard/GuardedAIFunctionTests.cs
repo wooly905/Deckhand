@@ -172,6 +172,16 @@ public class GuardedAIFunctionTests
     }
 
     [Fact]
+    public async Task Card_number_across_the_error_cut_is_masked()
+    {
+        var h = new Harness(_ => throw new InvalidOperationException(new string('e', 290) + " 4111111111111111"));
+
+        var result = await h.Call();
+
+        Assert.DoesNotContain("41111", result);
+    }
+
+    [Fact]
     public async Task Card_numbers_are_masked_in_the_observation()
     {
         var h = new Harness(_ => "copied 4111 1111 1111 1111");

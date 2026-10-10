@@ -119,7 +119,7 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
 
         session.Ledger.Record(call.CallId, approved);
         audit.Write(new AuditEntry(DateTimeOffset.Now, "approval", session.Ledger.CurrentRequest, call.Name,
-            JsonSerializer.Serialize(call.Arguments), decision.AllowForConversation ? "Change" : "Danger", label, null));
+            JsonSerializer.Serialize(call.Arguments), session.Policy.RiskOf(call.Name)?.ToString() ?? "Unknown", label, null));
 
         return request.CreateResponse(approved, approved ? null : "The user denied this action.");
     }

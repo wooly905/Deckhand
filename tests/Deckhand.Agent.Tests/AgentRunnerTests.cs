@@ -51,7 +51,7 @@ public class AgentRunnerTests
         var result = await runner.RunAsync("set wallpaper", cancellationToken: Ct);
 
         Assert.Equal("Done.", result.Text);
-        Assert.Contains(audit.Entries, e => e is { Kind: "approval", Tool: "wallpaper_set", Decision: "approved" });
+        Assert.Contains(audit.Entries, e => e is { Kind: "approval", Tool: "wallpaper_set", Decision: "approved", Risk: "Change" });
         Assert.Contains(audit.Entries, e => e is { Kind: "call", Tool: "wallpaper_set", Decision: "approved" });
         Assert.Equal(0, session.Ledger.UnapprovedCalls);
     }

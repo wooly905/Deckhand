@@ -50,15 +50,19 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
     /// <summary>The last run ended with ask_user; the next user message is a reply.</summary>
     public bool AwaitingReply { get; set; }
 
-    public bool IsActive(string toolName) => catalog.IsBaseTool(toolName) || ActiveToolNames.Contains(toolName);
+    /// <summary>ToolSelection = All: the model sees every tool, so every tool is active.</summary>
+    public bool AllToolsActive { get; init; }
+
+    public bool IsActive(string toolName) => AllToolsActive || catalog.IsBaseTool(toolName) || ActiveToolNames.Contains(toolName);
 
     public ActivationResult Activate(string key, IReadOnlyList<string> tools)
     {
         _history.Add(key);
         _active[key] = (tools, ++_clock);
-        if (ToolCatalog.AppControlGroups.Contains(ActivationResult.ShortName(key)) && key.StartsWith("group:", StringComparison.Ordinal))
+        var appControlGroup = key.StartsWith("group:", StringComparison.Ordinal) && ToolCatalog.AppControlGroups.Contains(ActivationResult.ShortName(key));
+        if (appControlGroup || tools.Any(IsAppControlTool))
         {
-            _appControlUsed = true;
+            _appControlUsed = true; // a group or a skill with browser or desktop_ui tools
         }
 
         var removed = new List<(string, IReadOnlyList<string>)>();
@@ -74,6 +78,11 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
 
     public void MarkUsed(string toolName)
     {
+        if (IsAppControlTool(toolName))
+        {
+            _appControlUsed = true; // covers ToolSelection = All, where no group is activated
+        }
+
         foreach (var key in _active.Where(a => a.Value.Tools.Contains(toolName)).Select(a => a.Key).ToList())
         {
             _active[key] = (_active[key].Tools, ++_clock);
@@ -102,6 +111,9 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
         MustFinish = false;
         AwaitingReply = false;
     }
+
+    private bool IsAppControlTool(string toolName) =>
+        catalog.Find(toolName)?.Group is { } group && ToolCatalog.AppControlGroups.Contains(group);
 
     private int CountedTools() => ActiveToolNames.Count(t => !catalog.IsBaseTool(t));
 }

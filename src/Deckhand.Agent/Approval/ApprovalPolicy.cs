@@ -47,6 +47,9 @@ public sealed class ApprovalPolicy(ToolCatalog catalog, IEnumerable<IApprovalRul
     public void AllowForConversation(string toolName) => _allowed.Add(toolName);
 
     public void Reset() => _allowed.Clear();
+
+    /// <summary>The catalog risk of a tool, for the audit log; null for an unknown tool.</summary>
+    public RiskLevel? RiskOf(string toolName) => catalog.Find(toolName)?.Risk;
 }
 
 /// <summary>With a remote endpoint, reading files, pages, or windows sends the content out of the computer.</summary>
