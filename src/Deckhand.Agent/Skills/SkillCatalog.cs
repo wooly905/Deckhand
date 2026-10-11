@@ -3,10 +3,14 @@ using YamlDotNet.Serialization;
 
 namespace Deckhand.Agent.Skills;
 
-public sealed record SkillInfo(string Name, string Description, IReadOnlyList<string> Tools, string Folder, bool BuiltIn);
+public sealed record SkillInfo(string Name,
+                               string Description,
+                               IReadOnlyList<string> Tools,
+                               string Folder,
+                               bool BuiltIn);
 
 /// <summary>Reads the frontmatter of each SKILL.md: name, description, and the Deckhand field metadata.tools.</summary>
-public sealed class SkillCatalog
+public sealed partial class SkillCatalog
 {
     private static readonly IDeserializer Yaml = new DeserializerBuilder().IgnoreUnmatchedProperties().Build();
 
@@ -21,6 +25,8 @@ public sealed class SkillCatalog
 
     public static SkillCatalog Load(IEnumerable<(string Root, bool BuiltIn)> roots)
     {
+        ArgumentNullException.ThrowIfNull(roots);
+
         var catalog = new SkillCatalog();
         foreach (var (root, builtIn) in roots)
         {
@@ -100,17 +106,5 @@ public sealed class SkillCatalog
 
         error = null;
         return new SkillInfo(frontmatter.Name, frontmatter.Description ?? "", tools, folder, builtIn);
-    }
-
-    private sealed class Frontmatter
-    {
-        [YamlMember(Alias = "name")]
-        public string? Name { get; set; }
-
-        [YamlMember(Alias = "description")]
-        public string? Description { get; set; }
-
-        [YamlMember(Alias = "metadata")]
-        public Dictionary<string, string>? Metadata { get; set; }
     }
 }

@@ -8,9 +8,12 @@ public class EvalRunnerTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static EvalRunner Runner(ScriptedChatClient model) => new(
-        () => model, new ChatSettings(), FakeToolManifest.Load(RepoPaths.File("eval/tools.json")),
-        RepoPaths.File("skills"), RepoPaths.File("eval"), docsAvailable: false);
+    private static EvalRunner Runner(ScriptedChatClient model) => new(() => model,
+                                                                      new ChatSettings(),
+                                                                      FakeToolManifest.Load(RepoPaths.File("eval/tools.json")),
+                                                                      RepoPaths.File("skills"),
+                                                                      RepoPaths.File("eval"),
+                                                                      docsAvailable: false);
 
     private static string Step(string action, string args) => $$"""{"thought":"t","action":"{{action}}","args":{{args}}}""";
 
@@ -23,7 +26,14 @@ public class EvalRunnerTests
             .Reply(Step("enable_tools", """{"group":"personalize"}"""))
             .Reply(Step("theme_set_mode", """{"mode":"dark"}"""))
             .Reply(Final("Dark mode is on."));
-        var c = new EvalCase { Id = "t1", Request = "use dark mode", ExpectGroup = "personalize", ExpectToolsAll = ["theme_set_mode"], ExpectArgs = new() { ["theme_set_mode"] = new() { ["mode"] = "dark" } } };
+        var c = new EvalCase
+        {
+            Id = "t1",
+            Request = "use dark mode",
+            ExpectGroup = "personalize",
+            ExpectToolsAll = ["theme_set_mode"],
+            ExpectArgs = new() { ["theme_set_mode"] = new() { ["mode"] = "dark" } }
+        };
 
         var result = await Runner(model).RunCaseAsync(c, Ct);
 
@@ -44,8 +54,12 @@ public class EvalRunnerTests
             .Reply(Final("All good."));
         var c = new EvalCase
         {
-            Id = "t2", Request = "ping 1.1.1.1", ExpectToolsAll = ["net_ping"], ForbidTools = ["net_ping"],
-            ExpectArgs = new() { ["net_ping"] = new() { ["host"] = "1.1.1.1" } }, ExpectAnswerContains = ["reachable"],
+            Id = "t2",
+            Request = "ping 1.1.1.1",
+            ExpectToolsAll = ["net_ping"],
+            ForbidTools = ["net_ping"],
+            ExpectArgs = new() { ["net_ping"] = new() { ["host"] = "1.1.1.1" } },
+            ExpectAnswerContains = ["reachable"],
         };
 
         var result = await Runner(model).RunCaseAsync(c, Ct);

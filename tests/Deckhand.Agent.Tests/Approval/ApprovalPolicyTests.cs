@@ -5,16 +5,37 @@ namespace Deckhand.Agent.Tests.Approval;
 
 public class ApprovalPolicyTests
 {
-    private static ApprovalPolicy Policy(bool remote = false)
+    private static ApprovalPolicy Policy(bool remote = false, bool autoApprove = false)
     {
         var catalog = new ToolCatalog();
         catalog.Add(AIFunctionFactory.Create(() => "", "wallpaper_set"), "personalize", RiskLevel.Change);
         catalog.Add(AIFunctionFactory.Create(() => "", "fs_delete"), "files", RiskLevel.Danger);
         catalog.Add(AIFunctionFactory.Create(() => "", "fs_read_text"), "files", RiskLevel.Read, policyDriven: true);
-        return new ApprovalPolicy(catalog, [new SensitiveReadRule(remote, "api.example.com")]);
+        return new ApprovalPolicy(catalog, [new SensitiveReadRule(remote, "api.example.com")], autoApprove);
     }
 
     private static FunctionCallContent Call(string name) => new("c1", name);
+
+    [Theory]
+    [InlineData("wallpaper_set")]
+    [InlineData("fs_delete")]
+    [InlineData("fs_read_text")]
+    public void Auto_approve_runs_known_tools_without_asking(string tool)
+    {
+        Assert.Equal(ApprovalOutcome.AutoApprove, Policy(remote: true, autoApprove: true).Decide(Call(tool)).Outcome);
+    }
+
+    [Fact]
+    public void Auto_approve_still_asks_for_an_unknown_tool()
+    {
+        Assert.Equal(ApprovalOutcome.Ask, Policy(autoApprove: true).Decide(Call("mystery")).Outcome);
+    }
+
+    [Fact]
+    public void Auto_approve_is_the_default_setting()
+    {
+        Assert.True(new Deckhand.Agent.Settings.ChatSettings().AutoApproveTools);
+    }
 
     [Fact]
     public void Change_tool_asks_and_offers_allow_for_conversation()

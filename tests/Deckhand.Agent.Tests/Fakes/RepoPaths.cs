@@ -1,3 +1,4 @@
+
 namespace Deckhand.Agent.Tests.Fakes;
 
 public static class RepoPaths
@@ -10,6 +11,7 @@ public static class RepoPaths
             dir = dir.Parent;
         }
 
-        return Path.Combine(dir?.FullName ?? throw new InvalidOperationException("Repository root not found."), relative);
+        return Path.Combine(dir?.FullName ?? throw new InvalidOperationException("Repository root not found."),
+                            relative);
     }
 }

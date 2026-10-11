@@ -22,9 +22,13 @@ public class MafContractTests
 
     private sealed class RecordingFunction(AIFunction inner) : DelegatingAIFunction(inner)
     {
-        public int Calls { get; private set; }
+        public int Calls
+        {
+            get; private set;
+        }
 
-        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments,
+                                                              CancellationToken cancellationToken)
         {
             Calls++;
             return base.InvokeCoreAsync(arguments, cancellationToken);
@@ -38,7 +42,9 @@ public class MafContractTests
         var inner = new ScriptedChatClient().ReplyCall("net_ping").Reply("done");
         var agent = BuildAgent(inner, [wrapped]);
 
-        var response = await agent.RunAsync("ping it", await agent.CreateSessionAsync(cancellationToken: Ct), cancellationToken: Ct);
+        var response = await agent.RunAsync("ping it",
+                                            await agent.CreateSessionAsync(cancellationToken: Ct),
+                                            cancellationToken: Ct);
 
         Assert.Equal("done", response.Text);
         Assert.Equal(1, wrapped.Calls);
@@ -58,7 +64,9 @@ public class MafContractTests
         var request = first.Messages.SelectMany(m => m.Contents).OfType<ToolApprovalRequestContent>().Single();
         Assert.Equal(0, wrapped.Calls);
 
-        var second = await agent.RunAsync(new ChatMessage(ChatRole.User, [request.CreateResponse(true)]), session, cancellationToken: Ct);
+        var second = await agent.RunAsync(new ChatMessage(ChatRole.User, [request.CreateResponse(true)]),
+                                          session,
+                                          cancellationToken: Ct);
 
         Assert.Equal(1, wrapped.Calls);
         Assert.Equal("done", second.Text);
@@ -85,11 +93,16 @@ public class MafContractTests
         var root = Directory.CreateTempSubdirectory("deckhand-skills-");
         var skillDir = Directory.CreateDirectory(Path.Combine(root.FullName, "demo-skill"));
         File.WriteAllText(Path.Combine(skillDir.FullName, "SKILL.md"),
-            "---\nname: demo-skill\ndescription: Demo skill for tests.\nmetadata:\n  tools: \"net_ping\"\n---\n# Steps\n1. Run net_ping.\n");
-        var source = new AgentFileSkillsSource([root.FullName], options: new AgentFileSkillsSourceOptions { AllowedScriptExtensions = [] });
+                          "---\nname: demo-skill\ndescription: Demo skill for tests.\nmetadata:\n  tools: \"net_ping\"\n---\n# Steps\n1. Run net_ping.\n");
+        var source = new AgentFileSkillsSource([root.FullName],
+                                               options: new AgentFileSkillsSourceOptions { AllowedScriptExtensions = [] });
         var provider = new AgentSkillsProvider(source,
-            options: new AgentSkillsProviderOptions { DisableLoadSkillApproval = true, DisableReadSkillResourceApproval = true },
-            ownsSource: true);
+                                               options: new AgentSkillsProviderOptions
+                                               {
+                                                   DisableLoadSkillApproval = true,
+                                                   DisableReadSkillResourceApproval = true
+                                               },
+                                               ownsSource: true);
         var inner = new ScriptedChatClient().Reply("ok");
         var agent = BuildAgent(inner, [], [provider]);
 

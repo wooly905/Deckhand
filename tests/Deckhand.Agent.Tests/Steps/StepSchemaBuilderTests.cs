@@ -7,7 +7,9 @@ namespace Deckhand.Agent.Tests.Steps;
 public class StepSchemaBuilderTests
 {
     private static readonly AIFunction Ping =
-        AIFunctionFactory.Create((string host, int count = 4) => "", "net_ping", "Ping a host. Returns the time of each reply.");
+        AIFunctionFactory.Create((string host, int count = 4) => "",
+                                 "net_ping",
+                                 "Ping a host. Returns the time of each reply.");
 
     private static readonly AIFunction Info =
         AIFunctionFactory.Create(() => "", "system_get_info", "OS version, CPU, RAM.");

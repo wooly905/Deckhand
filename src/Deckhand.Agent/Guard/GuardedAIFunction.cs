@@ -8,7 +8,11 @@ using Microsoft.Extensions.AI;
 namespace Deckhand.Agent.Guard;
 
 /// <summary>ToolGuard: checks, timeout, observation cut, masking, and audit around one tool.</summary>
-public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state, CallTracker tracker, ApprovalLedger ledger, IAuditLog audit)
+public sealed class GuardedAIFunction(ToolEntry entry,
+                                      ToolSelectionState state,
+                                      CallTracker tracker,
+                                      ApprovalLedger ledger,
+                                      IAuditLog audit)
     : DelegatingAIFunction(entry.Function)
 {
     public const int MaxObservationChars = 1500;
@@ -17,22 +21,33 @@ public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state,
     public const string RepeatMessage = "You already ran this. Use the result or select a different action.";
     private const string StoppedMessage = "Stopped: the same action was repeated 3 times.";
 
-    protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+    protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments,
+                                                                CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!state.IsActive(entry.Name))
-        {
-            return NotEnabledMessage;
-        }
 
         var context = FunctionInvokingChatClient.CurrentContext;
         var callId = context?.CallContent.CallId ?? "";
         var argumentsJson = JsonSerializer.Serialize(arguments.ToDictionary(a => a.Key, a => a.Value));
+        var decision = entry.NeedsApproval ? ledger.Find(callId) == true ? "approved" : "missing" : "not needed";
+        var call = new ToolCallAudit(audit,
+                                     ledger.CurrentRequest,
+                                     entry.Name,
+                                     argumentsJson,
+                                     entry.Risk.ToString(),
+                                     decision,
+                                     callId);
+
+        if (!state.IsActive(entry.Name))
+        {
+            call.Complete("blocked", false, NotEnabledMessage);
+            return NotEnabledMessage;
+        }
 
         var repeat = tracker.RecordCall(entry.Name + argumentsJson);
         if (repeat == 2)
         {
+            call.Complete("blocked", false, RepeatMessage);
             return RepeatMessage;
         }
 
@@ -43,13 +58,12 @@ public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state,
                 context.Terminate = true;
             }
 
+            call.Complete("blocked", false, StoppedMessage);
             return StoppedMessage;
         }
 
-        var decision = "not needed";
         if (entry.NeedsApproval)
         {
-            decision = ledger.Find(callId) == true ? "approved" : "missing";
             if (decision == "missing")
             {
                 ledger.CountUnapproved();
@@ -59,14 +73,16 @@ public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state,
         state.MarkUsed(entry.Name);
         string text;
         bool success;
+        string status;
+        Exception? error;
         try
         {
-            (text, success) = await RunAsync(arguments, cancellationToken);
+            (text, success, status, error) = await RunAsync(arguments, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
             // Stopped while the tool ran: the tool may already have changed something, so keep a record.
-            audit.Write(new AuditEntry(DateTimeOffset.Now, "call", ledger.CurrentRequest, entry.Name, argumentsJson, entry.Risk.ToString(), decision, false));
+            call.Complete("cancelled", false, error: ex);
             throw;
         }
 
@@ -75,34 +91,41 @@ public sealed class GuardedAIFunction(ToolEntry entry, ToolSelectionState state,
             state.MustFinish = true;
         }
 
-        audit.Write(new AuditEntry(DateTimeOffset.Now, "call", ledger.CurrentRequest, entry.Name, argumentsJson, entry.Risk.ToString(), decision, success));
-        return Cut(CardNumberMasker.Mask(text));
+        call.Complete(status, success, text, error);
+        var observation = CardNumberMasker.Mask(text);
+        if (error is not null && status == "failed")
+        {
+            var message = CardNumberMasker.Mask(error.Message);
+            observation = "Error: " + (message.Length > MaxErrorChars ? message[..MaxErrorChars] : message);
+        }
+        return success && entry.Name == "browser_read" ? observation : Cut(observation);
     }
 
-    private async Task<(string Text, bool Success)> RunAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+    private async Task<(string Text,
+                        bool Success,
+                        string Status,
+                        Exception? Error)> RunAsync(AIFunctionArguments arguments,
+                                                    CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(entry.Timeout);
         try
         {
             var result = await base.InvokeCoreAsync(arguments, timeout.Token);
-            return (TranscriptWriter.ObservationText(result), true);
+            return (TranscriptWriter.ObservationText(result), true, "succeeded", null);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            return ($"Error: the tool did not finish in {(int)entry.Timeout.TotalSeconds} seconds.", false);
+            return ($"Error: the tool did not finish in {(int)entry.Timeout.TotalSeconds} seconds.", false, "timed_out", ex);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Mask before the cut, so a card number across the cut cannot survive as a short digit run.
-            var masked = CardNumberMasker.Mask(ex.Message);
-            var message = masked.Length > MaxErrorChars ? masked[..MaxErrorChars] : masked;
-            return ("Error: " + message, false);
+            return ("Error: " + ex.Message, false, "failed", ex);
         }
     }
 
     private static string Cut(string text) =>
         text.Length <= MaxObservationChars
-            ? text
-            : $"{text[..MaxObservationChars]}... (cut: showing {MaxObservationChars} of {text.Length} characters)";
+        ? text
+        : $"{text[..MaxObservationChars]}... (cut: showing {MaxObservationChars} of {text.Length} characters)";
 }

@@ -14,7 +14,10 @@ public sealed class ScriptedChatClient : IChatClient
 
     public ScriptedChatClient ReplyCall(string name, IDictionary<string, object?>? args = null, string? callId = null) =>
         ReplyWith((_, _) => new ChatResponse(new ChatMessage(ChatRole.Assistant,
-            [new FunctionCallContent(callId ?? Guid.NewGuid().ToString("N"), name, args ?? new Dictionary<string, object?>())])));
+                                                             [new FunctionCallContent(callId ?? Guid.NewGuid()
+            .ToString("N"),
+                                                                                      name,
+                                                                                      args ?? new Dictionary<string, object?>())])));
 
     public ScriptedChatClient ReplyWith(Func<IReadOnlyList<ChatMessage>, ChatOptions?, ChatResponse> reply)
     {
@@ -22,7 +25,9 @@ public sealed class ScriptedChatClient : IChatClient
         return this;
     }
 
-    public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+    public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+                                               ChatOptions? options = null,
+                                               CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var list = messages.ToList();
@@ -35,7 +40,9 @@ public sealed class ScriptedChatClient : IChatClient
         return Task.FromResult(_replies.Dequeue()(list, options));
     }
 
-    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+                                                                                ChatOptions? options = null,
+                                                                                [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var response = await GetResponseAsync(messages, options, cancellationToken);
         foreach (var update in response.ToChatResponseUpdates())

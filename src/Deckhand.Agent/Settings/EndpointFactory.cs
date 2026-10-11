@@ -1,16 +1,11 @@
 using System.ClientModel;
 using Microsoft.Extensions.AI;
 using OpenAI;
+using OpenAI.Responses;
 using ChatCompletionOptions = OpenAI.Chat.ChatCompletionOptions;
 using ChatReasoningEffortLevel = OpenAI.Chat.ChatReasoningEffortLevel;
 
 namespace Deckhand.Agent.Settings;
-
-/// <summary>Reads secrets by name. M1c implements it with Windows Credential Manager.</summary>
-public interface ISecretStore
-{
-    string? Read(string name);
-}
 
 public sealed class EndpointFactory(ModelSettings settings, ISecretStore secrets)
 {
@@ -21,10 +16,28 @@ public sealed class EndpointFactory(ModelSettings settings, ISecretStore secrets
     public IChatClient CreateChatClient()
     {
         var endpoint = Settings.ChatEndpoint;
-        var client = new OpenAIClient(
-            new ApiKeyCredential(ResolveKey(endpoint) ?? "none"), // the SDK needs a value for servers without a key
+        var client = new OpenAIClient(new ApiKeyCredential(ResolveKey(endpoint) ?? "none"), // the SDK needs a value for servers without a key
             new OpenAIClientOptions { Endpoint = new Uri(endpoint.BaseUrl), NetworkTimeout = TimeSpan.FromMinutes(5) });
-        IChatClient chat = client.GetChatClient(Settings.Chat.Model).AsIChatClient();
+        var useResponses = Settings.IsChatRemote && string.Equals(Settings.Chat.Model,
+                                                                  "auto",
+                                                                  StringComparison.OrdinalIgnoreCase);
+        IChatClient chat = useResponses
+            ? client.GetResponsesClient().AsIChatClient(Settings.Chat.Model)
+            : client.GetChatClient(Settings.Chat.Model).AsIChatClient();
+        if (useResponses)
+        {
+            chat = new ConfigureOptionsChatClient(chat,
+                                                  options =>
+                                                  {
+                                                      var previous = options.RawRepresentationFactory;
+                                                      options.RawRepresentationFactory = model =>
+                                                      {
+                                                          var raw = previous?.Invoke(model) as CreateResponseOptions ?? new CreateResponseOptions();
+                                                          raw.StoredOutputEnabled = false; // Routers need full history rather than previous_response_id.
+                                                          return raw;
+                                                      };
+                                                  });
+        }
 
         return Settings.Chat.Thinking || Settings.Chat.ReasoningEffortWhenThinkingOff is null
             ? chat
@@ -55,10 +68,14 @@ public sealed class EndpointFactory(ModelSettings settings, ISecretStore secrets
 /// <summary>Sets reasoning_effort on every request, to turn off the thinking mode of the model.</summary>
 public sealed class ReasoningEffortChatClient(IChatClient inner, string effort) : DelegatingChatClient(inner)
 {
-    public override Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+    public override Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+                                                        ChatOptions? options = null,
+                                                        CancellationToken cancellationToken = default) =>
         base.GetResponseAsync(messages, Apply(options), cancellationToken);
 
-    public override IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+    public override IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+                                                                                   ChatOptions? options = null,
+                                                                                   CancellationToken cancellationToken = default) =>
         base.GetStreamingResponseAsync(messages, Apply(options), cancellationToken);
 
     private ChatOptions Apply(ChatOptions? options)
@@ -67,6 +84,15 @@ public sealed class ReasoningEffortChatClient(IChatClient inner, string effort) 
         var previous = result.RawRepresentationFactory;
         result.RawRepresentationFactory = client =>
         {
+            if (client.GetService<ResponsesClient>() is not null)
+            {
+                var responseOptions = previous?.Invoke(client) as CreateResponseOptions ?? new CreateResponseOptions();
+                responseOptions.ReasoningOptions = new ResponseReasoningOptions
+                {
+                    ReasoningEffortLevel = new ResponseReasoningEffortLevel(effort),
+                };
+                return responseOptions;
+            }
             var raw = previous?.Invoke(client) as ChatCompletionOptions ?? new ChatCompletionOptions();
             raw.ReasoningEffortLevel = new ChatReasoningEffortLevel(effort);
             return raw;

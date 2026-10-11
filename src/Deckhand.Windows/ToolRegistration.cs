@@ -1,0 +1,59 @@
+using System.ComponentModel;
+using System.Reflection;
+using Deckhand.Agent.Tools;
+using Microsoft.Extensions.AI;
+
+namespace Deckhand.Windows;
+
+[AttributeUsage(AttributeTargets.Method)]
+internal sealed class WindowsToolAttribute(string name,
+                                           string group,
+                                           RiskLevel risk = RiskLevel.Read,
+                                           bool policyDriven = false,
+                                           int timeoutSeconds = 30) : Attribute
+{
+    public string Name { get; } = name;
+
+    public string Group { get; } = group;
+
+    public RiskLevel Risk { get; } = risk;
+
+    public bool PolicyDriven { get; } = policyDriven;
+
+    public int TimeoutSeconds { get; } = timeoutSeconds;
+}
+
+public static class ToolRegistration
+{
+    public static void Add(ToolCatalog catalog, object provider)
+    {
+        foreach (var method in provider.GetType().GetMethods())
+        {
+            if (method.GetCustomAttribute<WindowsToolAttribute>() is not { } tool)
+            {
+                continue;
+            }
+
+            catalog.Add(new WindowsFunction(AIFunctionFactory.Create(method,
+                                                                     provider,
+                                                                     tool.Name,
+                                                                     method.GetCustomAttribute<DescriptionAttribute>()?.Description),
+                                            provider is BrowserTools browser ? browser.CancelPending : null),
+                        tool.Group,
+                        tool.Risk,
+                        tool.PolicyDriven,
+                        TimeSpan.FromSeconds(tool.TimeoutSeconds));
+        }
+    }
+
+    private sealed class WindowsFunction(AIFunction inner, Action? cancel) : DelegatingAIFunction(inner)
+    {
+        protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments,
+                                                                    CancellationToken cancellationToken)
+        {
+            using var stop = cancel is null ? default : cancellationToken.Register(cancel);
+            return await Task.Run(async () => await base.InvokeCoreAsync(arguments, cancellationToken),
+                                  cancellationToken);
+        }
+    }
+}

@@ -36,9 +36,8 @@ public sealed class UndoTools(UndoJournal journal, IEnumerable<IUndoRestorer> re
     }
 
     [Description("Undo one change that Deckhand made. Without id, undo the newest change that can be undone.")]
-    public string UndoLast(
-        [Description("ID from undo_list. Optional.")] string? id = null,
-        [Description("Restore even if the setting was changed after Deckhand changed it.")] bool force = false)
+    public string UndoLast([Description("ID from undo_list. Optional.")] string? id = null,
+                           [Description("Restore even if the setting was changed after Deckhand changed it.")] bool force = false)
     {
         var entry = id is null
             ? journal.List().FirstOrDefault(e => _restorers.ContainsKey(e.Kind) && journal.IsNewest(e))

@@ -2,25 +2,14 @@ using System.Text.Json;
 
 namespace Deckhand.Agent.Undo;
 
-public sealed record UndoEntry(
-    string Id,
-    DateTimeOffset Time,
-    string Session,
-    string Kind,
-    string Tool,
-    string Target,
-    string? PreviousValue,
-    string? NewValue);
-
-/// <summary>Restores one kind of setting (wallpaper, registry, ...). M1b implements one per settings tool.</summary>
-public interface IUndoRestorer
-{
-    string Kind { get; }
-
-    string? ReadCurrent(string target);
-
-    void Restore(string target, string? previousValue);
-}
+public sealed record UndoEntry(string Id,
+                               DateTimeOffset Time,
+                               string Session,
+                               string Kind,
+                               string Tool,
+                               string Target,
+                               string? PreviousValue,
+                               string? NewValue);
 
 /// <summary>Global record of the previous value of each setting that Deckhand changed. Kept 7 days.</summary>
 public sealed class UndoJournal(string folder, TimeProvider time)
@@ -31,9 +20,21 @@ public sealed class UndoJournal(string folder, TimeProvider time)
 
     private string FilePath => Path.Combine(folder, "journal.jsonl");
 
-    public UndoEntry Record(string session, string kind, string tool, string target, string? previousValue, string? newValue)
+    public UndoEntry Record(string session,
+                            string kind,
+                            string tool,
+                            string target,
+                            string? previousValue,
+                            string? newValue)
     {
-        var entry = new UndoEntry(Guid.NewGuid().ToString("N")[..8], time.GetUtcNow(), session, kind, tool, target, previousValue, newValue);
+        var entry = new UndoEntry(Guid.NewGuid().ToString("N")[..8],
+                                  time.GetUtcNow(),
+                                  session,
+                                  kind,
+                                  tool,
+                                  target,
+                                  previousValue,
+                                  newValue);
         lock (_lock)
         {
             Directory.CreateDirectory(folder);
@@ -52,7 +53,10 @@ public sealed class UndoJournal(string folder, TimeProvider time)
                 return [];
             }
 
-            var all = File.ReadAllLines(FilePath).Where(l => l.Length > 0).Select(l => JsonSerializer.Deserialize<UndoEntry>(l)!).ToList();
+            var all = File.ReadAllLines(FilePath)
+                .Where(l => l.Length > 0)
+                .Select(l => JsonSerializer.Deserialize<UndoEntry>(l)!)
+                .ToList();
             var cutoff = time.GetUtcNow() - Retention;
             var kept = all.Where(e => e.Time >= cutoff).ToList();
             if (kept.Count != all.Count)
@@ -67,6 +71,13 @@ public sealed class UndoJournal(string folder, TimeProvider time)
 
     public UndoEntry? Find(string id) => List().FirstOrDefault(e => e.Id == id);
 
-    public bool IsNewest(UndoEntry entry) =>
-        List().First(e => e.Kind == entry.Kind && e.Target == entry.Target).Id == entry.Id;
+    public bool IsNewest(UndoEntry entry) => List()
+        .First(e => e.Kind == entry.Kind
+            && SameTarget(e, entry))
+        .Id == entry.Id;
+
+    private static bool SameTarget(UndoEntry left, UndoEntry right) => left.Kind == "registry"
+        ? JsonSerializer.Deserialize<string[]>(left.Target)!.SequenceEqual(JsonSerializer.Deserialize<string[]>(right.Target)!,
+                                                                           StringComparer.OrdinalIgnoreCase)
+        : left.Target == right.Target;
 }

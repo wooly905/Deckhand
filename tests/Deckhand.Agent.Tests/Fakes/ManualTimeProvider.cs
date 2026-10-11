@@ -1,3 +1,4 @@
+
 namespace Deckhand.Agent.Tests.Fakes;
 
 public sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider

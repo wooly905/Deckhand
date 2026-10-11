@@ -13,15 +13,37 @@ public class GuardedAIFunctionTests
     private sealed class Harness
     {
         public ToolCatalog Catalog { get; } = new();
-        public ToolSelectionState State { get; }
-        public CallTracker Tracker { get; } = new();
-        public ApprovalLedger Ledger { get; } = new() { CurrentRequest = "do it" };
-        public ListAuditLog Audit { get; } = new();
-        public int Runs { get; private set; }
 
-        public Harness(Func<string, string> body, RiskLevel risk = RiskLevel.Read, TimeSpan? timeout = null, bool active = true)
+        public ToolSelectionState State
         {
-            Catalog.Add(AIFunctionFactory.Create((string x) => { Runs++; return body(x); }, "net_ping"), "network", risk, timeout: timeout);
+            get;
+        }
+
+        public CallTracker Tracker { get; } = new();
+
+        public ApprovalLedger Ledger { get; } = new() { CurrentRequest = "do it" };
+
+        public ListAuditLog Audit { get; } = new();
+
+        public int Runs
+        {
+            get; private set;
+        }
+
+        public Harness(Func<string, string> body,
+                       RiskLevel risk = RiskLevel.Read,
+                       TimeSpan? timeout = null,
+                       bool active = true)
+        {
+            Catalog.Add(AIFunctionFactory.Create((string x) =>
+            {
+                Runs++;
+                return body(x);
+            },
+                                                 "net_ping"),
+                        "network",
+                        risk,
+                        timeout: timeout);
             State = new ToolSelectionState(Catalog, 14);
             if (active)
             {
@@ -42,6 +64,8 @@ public class GuardedAIFunctionTests
 
         Assert.Equal(GuardedAIFunction.NotEnabledMessage, await h.Call());
         Assert.Equal(0, h.Runs);
+        Assert.Equal("blocked", h.Audit.Entries.Last().Status);
+        Assert.Equal(GuardedAIFunction.NotEnabledMessage, h.Audit.Entries.Last().Result);
     }
 
     [Fact]
@@ -50,9 +74,17 @@ public class GuardedAIFunctionTests
         var h = new Harness(x => "pong " + x);
 
         Assert.Equal("pong a", await h.Call());
-        var entry = Assert.Single(h.Audit.Entries);
-        Assert.Equal(("call", "net_ping", "do it", true, "not needed"), (entry.Kind, entry.Tool, entry.Request, entry.Success, entry.Decision));
+        var entry = Assert.Single(h.Audit.Entries, e => e.Kind == "call");
+        Assert.Equal(("call", "net_ping", "do it", true, "not needed"),
+                     (entry.Kind, entry.Tool, entry.Request, entry.Success, entry.Decision));
         Assert.Contains("\"x\"", entry.Arguments);
+        Assert.Equal("pong a", entry.Result);
+        Assert.Equal("succeeded", entry.Status);
+        Assert.True(entry.DurationMs >= 0);
+        var start = Assert.Single(h.Audit.Entries, e => e.Kind == "call_start");
+        Assert.Equal("started", start.Status);
+        Assert.Equal(start.CallId, entry.CallId);
+        Assert.False(string.IsNullOrEmpty(entry.CallId));
     }
 
     [Fact]
@@ -66,6 +98,8 @@ public class GuardedAIFunctionTests
 
         Assert.Equal("ok", await h.Call("b"));
         Assert.Equal(2, h.Runs);
+        Assert.Equal(3, h.Audit.Entries.Count(e => e.Kind == "call"));
+        Assert.Contains(h.Audit.Entries, e => e.Status == "blocked" && e.Result == GuardedAIFunction.RepeatMessage);
     }
 
     [Fact]
@@ -77,7 +111,12 @@ public class GuardedAIFunctionTests
 
         Assert.StartsWith("Error: boom", result);
         Assert.True(result!.Length <= "Error: ".Length + GuardedAIFunction.MaxErrorChars);
-        Assert.False(h.Audit.Entries.Single().Success);
+        var entry = Assert.Single(h.Audit.Entries, e => e.Kind == "call");
+        Assert.False(entry.Success);
+        Assert.Equal("failed", entry.Status);
+        Assert.Equal("Error: boom " + new string('z', 500), entry.Result);
+        Assert.Contains("System.InvalidOperationException: boom", entry.Error);
+        Assert.Contains(nameof(Exception_becomes_a_short_error_observation), entry.Error);
     }
 
     [Fact]
@@ -96,15 +135,30 @@ public class GuardedAIFunctionTests
     public async Task Slow_tool_times_out()
     {
         var catalog = new ToolCatalog();
-        catalog.Add(AIFunctionFactory.Create(async (CancellationToken token) => { await Task.Delay(5000, token); return "late"; }, "net_ping"),
-            "network", RiskLevel.Read, timeout: TimeSpan.FromMilliseconds(50));
+        catalog.Add(AIFunctionFactory.Create(async (CancellationToken token) =>
+        {
+            await Task.Delay(5000, token);
+            return "late";
+        },
+                                             "net_ping"),
+                    "network",
+                    RiskLevel.Read,
+                    timeout: TimeSpan.FromMilliseconds(50));
         var state = new ToolSelectionState(catalog, 14);
         state.Activate("group:network", ["net_ping"]);
-        var guard = new GuardedAIFunction(catalog.Find("net_ping")!, state, new CallTracker(), new ApprovalLedger(), new ListAuditLog());
+        var audit = new ListAuditLog();
+        var guard = new GuardedAIFunction(catalog.Find("net_ping")!,
+                                          state,
+                                          new CallTracker(),
+                                          new ApprovalLedger(),
+                                          audit);
 
         var result = await guard.InvokeAsync(new AIFunctionArguments(), Ct);
 
         Assert.Equal("Error: the tool did not finish in 0 seconds.", result?.ToString());
+        var entry = Assert.Single(audit.Entries, e => e.Kind == "call");
+        Assert.Equal("timed_out", entry.Status);
+        Assert.NotNull(entry.Error);
     }
 
     [Fact]
@@ -139,12 +193,15 @@ public class GuardedAIFunctionTests
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var catalog = new ToolCatalog();
         catalog.Add(AIFunctionFactory.Create(async (CancellationToken token) =>
-            {
-                started.SetResult();
-                await Task.Delay(Timeout.Infinite, token);
-                return "late";
-            }, "net_ping"),
-            "network", RiskLevel.Change, timeout: TimeSpan.FromMinutes(1));
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return "late";
+        },
+                                             "net_ping"),
+                    "network",
+                    RiskLevel.Change,
+                    timeout: TimeSpan.FromMinutes(1));
         var state = new ToolSelectionState(catalog, 14);
         state.Activate("group:network", ["net_ping"]);
         var ledger = new ApprovalLedger { CurrentRequest = "do it" };
@@ -153,11 +210,15 @@ public class GuardedAIFunctionTests
 
         var call = guard.InvokeAsync(new AIFunctionArguments(), cts.Token).AsTask();
         await started.Task.WaitAsync(Ct);
+        Assert.Equal("call_start", Assert.Single(audit.Entries).Kind);
         await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await call);
-        var entry = Assert.Single(audit.Entries);
-        Assert.Equal(("call", "net_ping", "do it", false, "missing"), (entry.Kind, entry.Tool, entry.Request, entry.Success, entry.Decision));
+        var entry = Assert.Single(audit.Entries, e => e.Kind == "call");
+        Assert.Equal(("call", "net_ping", "do it", false, "missing"),
+                     (entry.Kind, entry.Tool, entry.Request, entry.Success, entry.Decision));
+        Assert.Equal("cancelled", entry.Status);
+        Assert.NotNull(entry.Error);
     }
 
     [Fact]
@@ -169,6 +230,7 @@ public class GuardedAIFunctionTests
 
         Assert.StartsWith(new string('y', GuardedAIFunction.MaxObservationChars), result);
         Assert.EndsWith("... (cut: showing 1500 of 4000 characters)", result);
+        Assert.Equal(new string('y', 4000), h.Audit.Entries.Last().Result);
     }
 
     [Fact]
@@ -206,11 +268,20 @@ public class GuardedAIFunctionTests
         catalog.Add(AIFunctionFactory.Create(() => "ok", "net_ping"), "network", RiskLevel.Read);
         var state = new ToolSelectionState(catalog, 14);
         state.Activate("group:network", ["net_ping"]);
-        var tools = catalog.BuildAgentTools(e => new GuardedAIFunction(e, state, new CallTracker(), new ApprovalLedger(), new ListAuditLog()));
-        var inner = new ScriptedChatClient().ReplyCall("net_ping").ReplyCall("net_ping").ReplyCall("net_ping").Reply("never");
+        var tools = catalog.BuildAgentTools(e => new GuardedAIFunction(e,
+                                                                       state,
+                                                                       new CallTracker(),
+                                                                       new ApprovalLedger(),
+                                                                       new ListAuditLog()));
+        var inner = new ScriptedChatClient().ReplyCall("net_ping")
+            .ReplyCall("net_ping")
+            .ReplyCall("net_ping")
+            .Reply("never");
         using var client = new FunctionInvokingChatClient(inner);
 
-        var response = await client.GetResponseAsync([new ChatMessage(ChatRole.User, "go")], new ChatOptions { Tools = tools }, Ct);
+        var response = await client.GetResponseAsync([new ChatMessage(ChatRole.User, "go")],
+                                                     new ChatOptions { Tools = tools },
+                                                     Ct);
 
         Assert.Equal(3, inner.Calls.Count);
         var last = response.Messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Last();

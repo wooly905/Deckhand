@@ -5,12 +5,17 @@ using Microsoft.Extensions.AI;
 namespace Deckhand.Agent.Steps;
 
 /// <summary>Changes native tool calling into one JSON step per model call, for small models.</summary>
-public sealed class ReActStepChatClient(IChatClient inner, ArgsSchemaMode argsMode, TranscriptWriter writer, StepEvents events)
+public sealed class ReActStepChatClient(IChatClient inner,
+                                        ArgsSchemaMode argsMode,
+                                        TranscriptWriter writer,
+                                        StepEvents events)
     : DelegatingChatClient(inner)
 {
     private const string GiveUpAnswer = "Sorry, the model did not give a valid step. Try again, or select a different model in Settings.";
 
-    public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+    public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+                                                              ChatOptions? options = null,
+                                                              CancellationToken cancellationToken = default)
     {
         var tools = options?.Tools?.OfType<AIFunctionDeclaration>().ToList() ?? [];
         var transcript = writer.Write(messages, options?.Instructions, tools);
@@ -32,14 +37,17 @@ public sealed class ReActStepChatClient(IChatClient inner, ArgsSchemaMode argsMo
 
             events.RecordInvalid();
             transcript.Add(new ChatMessage(ChatRole.Assistant, response.Text));
-            transcript.Add(new ChatMessage(ChatRole.User, $"That reply was not a valid step: {error} Reply with one JSON step."));
+            transcript.Add(new ChatMessage(ChatRole.User,
+                                           $"That reply was not a valid step: {error} Reply with one JSON step."));
         }
 
         events.RecordGiveUp();
         return new ChatResponse(FinalMessage("", StepSchemaBuilder.FinalAnswer, GiveUpAnswer));
     }
 
-    public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+                                                                                         ChatOptions? options = null,
+                                                                                         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var response = await GetResponseAsync(messages, options, cancellationToken);
         foreach (var update in response.ToChatResponseUpdates())
@@ -53,9 +61,11 @@ public sealed class ReActStepChatClient(IChatClient inner, ArgsSchemaMode argsMo
         var message = step.IsFinal
             ? FinalMessage(step.Thought, step.Action, step.Answer)
             : new ChatMessage(ChatRole.Assistant,
-            [
+                              [
                 new TextReasoningContent(step.Thought),
-                new FunctionCallContent(Guid.NewGuid().ToString("N"), step.Action, new Dictionary<string, object?>(step.Args)),
+                new FunctionCallContent(Guid.NewGuid().ToString("N"),
+                                        step.Action,
+                                        new Dictionary<string, object?>(step.Args)),
             ]);
 
         return new ChatResponse(message) { ModelId = raw.ModelId, Usage = raw.Usage, FinishReason = raw.FinishReason };
@@ -64,6 +74,9 @@ public sealed class ReActStepChatClient(IChatClient inner, ArgsSchemaMode argsMo
     private static ChatMessage FinalMessage(string thought, string action, string answer) =>
         new(ChatRole.Assistant, [new TextReasoningContent(thought), new TextContent(answer)])
         {
-            AdditionalProperties = new() { [TranscriptWriter.ActionKey] = action },
+            AdditionalProperties = new()
+            {
+                [TranscriptWriter.ActionKey] = action
+            },
         };
 }

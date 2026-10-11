@@ -6,9 +6,14 @@ namespace Deckhand.Agent.Tests.Audit;
 
 public class AuditLogTests
 {
-    private static AuditEntry Entry(string args) => new(
-        new DateTimeOffset(2026, 10, 10, 9, 30, 0, TimeSpan.Zero).ToLocalTime(), "call", "set wallpaper",
-        "wallpaper_set", args, "Change", "approved", true);
+    private static AuditEntry Entry(string args) => new(new DateTimeOffset(2026, 10, 10, 9, 30, 0, TimeSpan.Zero).ToLocalTime(),
+                                                        "call",
+                                                        "set wallpaper",
+                                                        "wallpaper_set",
+                                                        args,
+                                                        "Change",
+                                                        "approved",
+                                                        true);
 
     [Fact]
     public void Entries_are_appended_as_json_lines_in_a_dated_file()
@@ -34,11 +39,39 @@ public class AuditLogTests
         var folder = Directory.CreateTempSubdirectory("deckhand-audit-").FullName;
         var log = new JsonlAuditLog(folder);
 
-        log.Write(Entry("""{"text":"4111 1111 1111 1111"}""") with { Request = "type 4111111111111111" });
+        log.Write(Entry("""{"text":"4111 1111 1111 1111"}""") with
+        {
+            Request = "type 4111111111111111",
+            Result = "copied 4111111111111111",
+            Error = "System.Exception: 4111 1111 1111 1111",
+        });
 
         var text = File.ReadAllText(Directory.GetFiles(folder).Single());
         Assert.DoesNotContain("4111", text);
         Assert.Contains(CardNumberMasker.Replacement, text);
+    }
+
+    [Fact]
+    public void Full_results_and_multiline_errors_remain_in_one_json_line()
+    {
+        var folder = Directory.CreateTempSubdirectory("deckhand-audit-").FullName;
+        var result = new string('x', 4000) + "\nlast line";
+        var error = "System.InvalidOperationException: failed\n   at Tool.Run()";
+        new JsonlAuditLog(folder).Write(Entry("{}") with
+        {
+            CallId = "call-1",
+            Status = "failed",
+            DurationMs = 12.5,
+            Result = result,
+            Error = error,
+        });
+
+        var line = Assert.Single(File.ReadAllLines(Directory.GetFiles(folder).Single()));
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal(result, json.RootElement.GetProperty("result").GetString());
+        Assert.Equal(error, json.RootElement.GetProperty("error").GetString());
+        Assert.Equal("call-1", json.RootElement.GetProperty("callId").GetString());
+        Assert.Equal(12.5, json.RootElement.GetProperty("durationMs").GetDouble());
     }
 
     [Fact]

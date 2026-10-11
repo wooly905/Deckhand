@@ -2,23 +2,6 @@ using Deckhand.Agent.Tools;
 
 namespace Deckhand.Agent.Selection;
 
-public sealed record ActivationResult(string Key, IReadOnlyList<(string Key, IReadOnlyList<string> Tools)> Removed)
-{
-    public string Describe()
-    {
-        var text = $"Enabled: {ShortName(Key)}.";
-        if (Removed.Count > 0)
-        {
-            var parts = Removed.Select(r => $"{ShortName(r.Key)} ({string.Join(", ", r.Tools)} are no longer available)");
-            text += $" Removed: {string.Join("; ", parts)}.";
-        }
-
-        return text;
-    }
-
-    internal static string ShortName(string key) => key[(key.IndexOf(':') + 1)..];
-}
-
 /// <summary>Active skills and groups, and the step counter, for the current request of one session.</summary>
 public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
 {
@@ -38,28 +21,45 @@ public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
 
     public IReadOnlySet<string> ActiveToolNames => _active.Values.SelectMany(v => v.Tools).ToHashSet();
 
-    public int StepCount { get; private set; }
+    public int StepCount
+    {
+        get; private set;
+    }
 
     public int StepLimit => (_appControlUsed ? AppControlLimit : BaseLimit) + (ExtensionUsed ? ExtensionSteps : 0);
 
-    public bool ExtensionUsed { get; private set; }
+    public bool ExtensionUsed
+    {
+        get; private set;
+    }
 
     /// <summary>The user did not extend the limit: the model may only give a final answer.</summary>
-    public bool MustFinish { get; set; }
+    public bool MustFinish
+    {
+        get; set;
+    }
 
     /// <summary>The last run ended with ask_user; the next user message is a reply.</summary>
-    public bool AwaitingReply { get; set; }
+    public bool AwaitingReply
+    {
+        get; set;
+    }
 
     /// <summary>ToolSelection = All: the model sees every tool, so every tool is active.</summary>
-    public bool AllToolsActive { get; init; }
+    public bool AllToolsActive
+    {
+        get; init;
+    }
 
-    public bool IsActive(string toolName) => AllToolsActive || catalog.IsBaseTool(toolName) || ActiveToolNames.Contains(toolName);
+    public bool IsActive(string toolName) => AllToolsActive || catalog.IsBaseTool(toolName)
+        || ActiveToolNames.Contains(toolName);
 
     public ActivationResult Activate(string key, IReadOnlyList<string> tools)
     {
         _history.Add(key);
         _active[key] = (tools, ++_clock);
-        var appControlGroup = key.StartsWith("group:", StringComparison.Ordinal) && ToolCatalog.AppControlGroups.Contains(ActivationResult.ShortName(key));
+        var appControlGroup = key.StartsWith("group:", StringComparison.Ordinal)
+            && ToolCatalog.AppControlGroups.Contains(ActivationResult.ShortName(key));
         if (appControlGroup || tools.Any(IsAppControlTool))
         {
             _appControlUsed = true; // a group or a skill with browser or desktop_ui tools

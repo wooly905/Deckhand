@@ -40,6 +40,31 @@ public class ToolCatalogTests
     }
 
     [Fact]
+    public void Missing_function_is_rejected_with_its_parameter_name()
+    {
+        var catalog = new ToolCatalog();
+
+        var error = Assert.Throws<ArgumentNullException>(() => catalog.Add(null!, "network", RiskLevel.Read));
+
+        Assert.Equal("function", error.ParamName);
+        Assert.Empty(catalog.Entries);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Missing_group_is_rejected_without_registering_the_tool(string? group)
+    {
+        var catalog = new ToolCatalog();
+
+        var error = Assert.ThrowsAny<ArgumentException>(() => catalog.Add(Fn("net_ping"), group!, RiskLevel.Read));
+
+        Assert.Equal("group", error.ParamName);
+        Assert.Empty(catalog.Entries);
+    }
+
+    [Fact]
     public void Duplicate_tool_names_are_rejected()
     {
         var catalog = new ToolCatalog();

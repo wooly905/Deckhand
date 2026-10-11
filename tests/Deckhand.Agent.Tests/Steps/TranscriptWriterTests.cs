@@ -7,9 +7,16 @@ public class TranscriptWriterTests
     private static readonly AIFunction Ping = AIFunctionFactory.Create((string host) => "", "net_ping", "Ping a host.");
 
     private static ChatMessage Call(string id, string name, string thought) =>
-        new(ChatRole.Assistant, [new TextReasoningContent(thought), new FunctionCallContent(id, name, new Dictionary<string, object?> { ["host"] = "1.1.1.1" })]);
+        new(ChatRole.Assistant,
+            [
+new TextReasoningContent(thought),
+            new FunctionCallContent(id,
+                                    name,
+                                    new Dictionary<string, object?> { ["host"] = "1.1.1.1" })
+]);
 
-    private static ChatMessage Result(string id, string text) => new(ChatRole.Tool, [new FunctionResultContent(id, text)]);
+    private static ChatMessage Result(string id, string text) => new(ChatRole.Tool,
+                                                                     [new FunctionResultContent(id, text)]);
 
     [Fact]
     public void System_message_has_instructions_tools_and_final_actions()
@@ -27,7 +34,13 @@ public class TranscriptWriterTests
     [Fact]
     public void Tool_calls_become_step_json_and_results_become_observations()
     {
-        var history = new List<ChatMessage> { TranscriptWriter.NewRequest("ping it"), Call("c1", "net_ping", "check"), Result("c1", "time=4ms") };
+        var history = new List<ChatMessage>
+        {
+            TranscriptWriter.NewRequest("ping it"),
+            Call("c1", "net_ping", "check"),
+            Result("c1",
+                   "time=4ms")
+        };
 
         var messages = new TranscriptWriter(16384).Write(history, "RULES", [Ping]);
 
@@ -57,7 +70,8 @@ public class TranscriptWriterTests
     public void Ask_user_text_keeps_its_action()
     {
         var question = new ChatMessage(ChatRole.Assistant, "Which one?") { AdditionalProperties = new() { [TranscriptWriter.ActionKey] = "ask_user" } };
-        var history = new List<ChatMessage> { TranscriptWriter.NewRequest("open vs"), question, new(ChatRole.User, "the 2026 one") };
+        var history = new List<ChatMessage> { TranscriptWriter.NewRequest("open vs"), question, new(ChatRole.User,
+                                                                                                    "the 2026 one") };
 
         var messages = new TranscriptWriter(16384).Write(history, "RULES", []);
 
@@ -87,7 +101,8 @@ public class TranscriptWriterTests
     [Fact]
     public void History_without_a_marker_is_all_current_request()
     {
-        var history = new List<ChatMessage> { new(ChatRole.User, "hello"), Call("c1", "net_ping", "t"), Result("c1", "r") };
+        var history = new List<ChatMessage> { new(ChatRole.User, "hello"), Call("c1", "net_ping", "t"), Result("c1",
+                                                                                                               "r") };
 
         var messages = new TranscriptWriter(16384).Write(history, "RULES", [Ping]);
 

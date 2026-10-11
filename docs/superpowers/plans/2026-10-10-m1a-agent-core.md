@@ -8,7 +8,7 @@
 
 **Tech Stack:** .NET 10, Microsoft.Agents.AI 1.24.0, Microsoft.Extensions.AI 10.10.x, OpenAI 2.14.0, YamlDotNet 18.1.0, xUnit v3, NSubstitute.
 
-**Spec:** `C:\work-progress\Deckhand\IMPLEMENTATION-PLAN.md` (Sections 4.1, 6, 7.2, 7.3, 7.5, 10, 13, 14). M1 is split into three plans: **M1a agent core (this plan)**, M1b Windows tools and app index, M1c WPF UI, first-run wizard, and Test connection.
+**Spec:** `C:\work-progress\Deckhand\IMPLEMENTATION-PLAN.md` (Sections 4.1, 6, 7.2, 7.3, 7.5, 10, 13, 14). M1 is split into three plans: **M1a agent core (this plan)**, M1b Windows tools and app index, M1c WinUI 3 UI, first-run wizard, and Test connection.
 
 ## Global Constraints
 
@@ -4674,7 +4674,7 @@ public enum ApprovalAnswer
     AllowForConversation,
 }
 
-/// <summary>Shows the approval card. M1c implements it in WPF.</summary>
+/// <summary>Shows the approval card. The desktop app implements it in WinUI 3.</summary>
 public interface IApprovalPrompter
 {
     Task<ApprovalAnswer> AskAsync(FunctionCallContent call, ApprovalDecision decision, CancellationToken cancellationToken);

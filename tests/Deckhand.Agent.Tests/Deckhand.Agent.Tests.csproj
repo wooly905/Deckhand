@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
@@ -11,10 +12,17 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Deckhand.Agent\Deckhand.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Deckhand.Windows\Deckhand.Windows.csproj" />
     <ProjectReference Include="..\..\src\Deckhand.Eval\Deckhand.Eval.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Microsoft.Extensions.AI" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Deckhand.App\DesktopChatService.cs" Link="Desktop\DesktopChatService.cs" />
+    <Compile Include="..\..\src\Deckhand.App\WindowsSecretStore.cs" Link="Desktop\WindowsSecretStore.cs" />
+    <Compile Include="..\..\src\Deckhand.App\WindowsAppTools.cs" Link="Desktop\WindowsAppTools.cs" />
+    <Compile Include="..\..\src\Deckhand.App\WindowsWindowTools.cs" Link="Desktop\WindowsWindowTools.cs" />
   </ItemGroup>
 </Project>

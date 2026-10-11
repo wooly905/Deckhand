@@ -17,7 +17,7 @@ public sealed class EnableToolsFunction : AIFunction
         ["eventlog"] = "Windows event logs",
         ["personalize"] = "wallpaper and theme",
         ["devices"] = "volume, brightness, power plan",
-        ["settings"] = "open Settings pages, Control Panel items, management consoles",
+        ["settings"] = "open Settings pages, Control Panel items, Disk Management (diskmgmt.msc), Device Manager, and management consoles via admin_tool_open",
         ["network"] = "network configuration, ping, DNS, ports",
         ["apps"] = "list apps, refresh the app index, find and install apps with winget",
         ["browser"] = "control a web page in Chrome or Edge",
@@ -54,11 +54,15 @@ public sealed class EnableToolsFunction : AIFunction
 
     public override string Name => "enable_tools";
 
-    public override string Description { get; }
+    public override string Description
+    {
+        get;
+    }
 
     public override JsonElement JsonSchema => _schema;
 
-    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments,
+                                                          CancellationToken cancellationToken)
     {
         var group = arguments.TryGetValue("group", out var value) ? value?.ToString() : null;
         if (group is null || !_catalog.Groups.Contains(group))
@@ -66,6 +70,7 @@ public sealed class EnableToolsFunction : AIFunction
             return ValueTask.FromResult<object?>($"Unknown group '{group}'. Groups: {string.Join(", ", _catalog.Groups)}.");
         }
 
-        return ValueTask.FromResult<object?>(_state.Activate($"group:{group}", _catalog.ToolsInGroup(group)).Describe());
+        return ValueTask.FromResult<object?>(_state.Activate($"group:{group}", _catalog.ToolsInGroup(group))
+            .Describe());
     }
 }

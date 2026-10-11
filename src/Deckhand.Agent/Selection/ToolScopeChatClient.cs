@@ -6,27 +6,29 @@ using Microsoft.Extensions.AI;
 
 namespace Deckhand.Agent.Selection;
 
-/// <summary>Asks the user if the run may continue after the step limit.</summary>
-public interface IStepLimitPrompter
-{
-    Task<bool> AskToContinueAsync(int stepsUsed, CancellationToken cancellationToken);
-}
-
 /// <summary>Shows the model only the base tools and the active skills and groups, and enforces the step limit.</summary>
-public sealed class ToolScopeChatClient(IChatClient inner, ToolSelectionState state, SkillCatalog skills, IStepLimitPrompter prompter, bool scopeTools)
+public sealed class ToolScopeChatClient(IChatClient inner,
+                                        ToolSelectionState state,
+                                        SkillCatalog skills,
+                                        IStepLimitPrompter prompter,
+                                        bool scopeTools)
     : DelegatingChatClient(inner)
 {
     public const string FinishMessage = "Give a final_answer now. Say what was done and what is left.";
 
     private readonly HashSet<string> _processedSkillCalls = [];
 
-    public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+    public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+                                                              ChatOptions? options = null,
+                                                              CancellationToken cancellationToken = default)
     {
         var (list, scoped) = await PrepareAsync(messages, options, cancellationToken);
         return await base.GetResponseAsync(list, scoped, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+                                                                                         ChatOptions? options = null,
+                                                                                         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var (list, scoped) = await PrepareAsync(messages, options, cancellationToken);
         await foreach (var update in base.GetStreamingResponseAsync(list, scoped, cancellationToken))
@@ -35,7 +37,9 @@ public sealed class ToolScopeChatClient(IChatClient inner, ToolSelectionState st
         }
     }
 
-    private async Task<(List<ChatMessage>, ChatOptions)> PrepareAsync(IEnumerable<ChatMessage> messages, ChatOptions? options, CancellationToken cancellationToken)
+    private async Task<(List<ChatMessage>, ChatOptions)> PrepareAsync(IEnumerable<ChatMessage> messages,
+                                                                      ChatOptions? options,
+                                                                      CancellationToken cancellationToken)
     {
         var list = messages.ToList();
         ActivateLoadedSkills(list);
@@ -95,7 +99,9 @@ public sealed class ToolScopeChatClient(IChatClient inner, ToolSelectionState st
     /// Native mode takes call IDs from the server, and some servers reuse them (for example call_0) across turns,
     /// so the key is the call ID plus how many earlier load_skill pairs used the same ID.
     /// </summary>
-    private static IEnumerable<(string Key, FunctionCallContent Call, FunctionResultContent Result)> LoadSkillPairs(List<ChatMessage> messages)
+    private static IEnumerable<(string Key,
+                                FunctionCallContent Call,
+                                FunctionResultContent Result)> LoadSkillPairs(List<ChatMessage> messages)
     {
         var pending = new Dictionary<string, Queue<FunctionCallContent>>();
         var seen = new Dictionary<string, int>();
@@ -111,7 +117,8 @@ public sealed class ToolScopeChatClient(IChatClient inner, ToolSelectionState st
 
                     queue.Enqueue(call);
                     break;
-                case FunctionResultContent result when pending.TryGetValue(result.CallId, out var waiting) && waiting.Count > 0:
+                case FunctionResultContent result when pending.TryGetValue(result.CallId, out var waiting)
+                && waiting.Count > 0:
                     var occurrence = seen.GetValueOrDefault(result.CallId);
                     seen[result.CallId] = occurrence + 1;
                     yield return ($"{result.CallId}#{occurrence}", waiting.Dequeue(), result);

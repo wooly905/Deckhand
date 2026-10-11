@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deckhand.Agent.Approval;
 using Deckhand.Agent.Audit;
 using Deckhand.Agent.Guard;
@@ -11,29 +12,15 @@ using Microsoft.Extensions.AI;
 
 namespace Deckhand.Agent;
 
-public sealed record AgentDependencies(
-    ChatSettings Chat,
-    IChatClient Model,
-    ToolCatalog Catalog,
-    SkillCatalog Skills,
-    IReadOnlyList<string> SkillRoots,
-    IAuditLog Audit,
-    IReadOnlyList<IApprovalRule> ApprovalRules,
-    IStepLimitPrompter StepLimitPrompter,
-    bool DocsAvailable);
-
-/// <summary>Everything that belongs to one conversation.</summary>
-public sealed class DeckhandSession
-{
-    public required AIAgent Agent { get; init; }
-    public required AgentSession Session { get; init; }
-    public required ToolSelectionState Selection { get; init; }
-    public required StepEvents Steps { get; init; }
-    public required CallTracker Calls { get; init; }
-    public required ApprovalLedger Ledger { get; init; }
-    public required ApprovalPolicy Policy { get; init; }
-    public required IReadOnlyList<AITool> Tools { get; init; }
-}
+public sealed record AgentDependencies(ChatSettings Chat,
+                                       IChatClient Model,
+                                       ToolCatalog Catalog,
+                                       SkillCatalog Skills,
+                                       IReadOnlyList<string> SkillRoots,
+                                       IAuditLog Audit,
+                                       IReadOnlyList<IApprovalRule> ApprovalRules,
+                                       IStepLimitPrompter StepLimitPrompter,
+                                       bool DocsAvailable);
 
 public sealed class AgentFactory(AgentDependencies dependencies)
 {
@@ -52,37 +39,55 @@ public sealed class AgentFactory(AgentDependencies dependencies)
                 f.MaximumIterationsPerRequest = 35; // backstop; ToolScopeChatClient owns the step limit
                 f.MaximumConsecutiveErrorsPerRequest = 2;
                 f.IncludeDetailedErrors = true;
+                // Catalog tools log inside their guard, before results are trimmed. Include provider tools too.
+                f.FunctionInvoker = (context, token) => d.Catalog.Find(context.Function.Name) is not null
+                    ? context.Function.InvokeAsync(context.Arguments, token)
+                    : ToolCallAudit.InvokeAsync(context, d.Audit, ledger, token);
             })
             .Use(inner => new ToolScopeChatClient(inner, selection, d.Skills, d.StepLimitPrompter, scopeTools: groups));
         if (d.Chat.StepMode == StepMode.Structured)
         {
-            builder.Use(inner => new ReActStepChatClient(inner, d.Chat.ArgsSchema, new TranscriptWriter(d.Chat.ContextWindow), steps));
+            builder.Use(inner => new ReActStepChatClient(inner,
+                                                         d.Chat.ArgsSchema,
+                                                         new TranscriptWriter(d.Chat.ContextWindow),
+                                                         steps));
+        }
+        else
+        {
+            builder.Use(inner => new NativeFallbackChatClient(inner,
+                                                               new ReActStepChatClient(inner,
+                                                                                       d.Chat.ArgsSchema,
+                                                                                       new TranscriptWriter(d.Chat.ContextWindow),
+                                                                                       steps),
+                                                               Prompts.System(d.DocsAvailable, StepMode.Structured),
+                                                               response => LogNativeFallback(d.Audit, ledger, response)));
         }
 
-        var tools = d.Catalog.BuildAgentTools(entry => new GuardedAIFunction(entry, selection, calls, ledger, d.Audit)).ToList();
+        var tools = d.Catalog.BuildAgentTools(entry => new GuardedAIFunction(entry, selection, calls, ledger, d.Audit))
+            .ToList();
         if (groups)
         {
             tools.Add(new EnableToolsFunction(d.Catalog, selection));
         }
 
-        var skillsProvider = new AgentSkillsProvider(
-            new CachingAgentSkillsSource(new DeduplicatingAgentSkillsSource(
-                new AgentFileSkillsSource(d.SkillRoots, options: new AgentFileSkillsSourceOptions { AllowedScriptExtensions = [] }))),
-            options: new AgentSkillsProviderOptions
-            {
-                DisableLoadSkillApproval = true,
-                DisableReadSkillResourceApproval = true,
-                SkillsInstructionPrompt = Prompts.SkillsInstruction,
-            },
-            ownsSource: true);
+        var skillsProvider = new AgentSkillsProvider(new CachingAgentSkillsSource(new DeduplicatingAgentSkillsSource(
+                new AgentFileSkillsSource(d.SkillRoots,
+                                          options: new AgentFileSkillsSourceOptions { AllowedScriptExtensions = [] }))),
+                                                     options: new AgentSkillsProviderOptions
+                                                     {
+                                                         DisableLoadSkillApproval = true,
+                                                         DisableReadSkillResourceApproval = true,
+                                                         SkillsInstructionPrompt = Prompts.SkillsInstruction,
+                                                     },
+                                                     ownsSource: true);
 
         var agent = builder.Build().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "Deckhand",
             ChatOptions = new ChatOptions
             {
-                Instructions = Prompts.System(d.DocsAvailable),
-                Temperature = 0.1f,
+                Instructions = Prompts.System(d.DocsAvailable, d.Chat.StepMode),
+                Temperature = string.Equals(d.Chat.Model, "auto", StringComparison.OrdinalIgnoreCase) ? null : 0.1f,
                 Tools = tools,
             },
             AIContextProviders = [skillsProvider],
@@ -97,8 +102,30 @@ public sealed class AgentFactory(AgentDependencies dependencies)
             Steps = steps,
             Calls = calls,
             Ledger = ledger,
-            Policy = new ApprovalPolicy(d.Catalog, d.ApprovalRules),
+            Policy = new ApprovalPolicy(d.Catalog, d.ApprovalRules, d.Chat.AutoApproveTools),
             Tools = tools,
         };
+    }
+
+    private static void LogNativeFallback(IAuditLog audit, ApprovalLedger ledger, ChatResponse response)
+    {
+        var metadata = JsonSerializer.Serialize(new
+        {
+            response.ModelId,
+            FinishReason = response.FinishReason?.Value
+        });
+        var reasoning = string.Join("\n", response.Messages.SelectMany(m => m.Contents)
+            .OfType<TextReasoningContent>().Select(c => c.Text));
+        audit.Write(new AuditEntry(DateTimeOffset.Now,
+                                   "model_fallback",
+                                   ledger.CurrentRequest,
+                                   "",
+                                   metadata,
+                                   "None",
+                                   null,
+                                   null,
+                                   Status: "structured",
+                                   Result: reasoning,
+                                   Error: "Native response contained reasoning but no answer or tool call."));
     }
 }

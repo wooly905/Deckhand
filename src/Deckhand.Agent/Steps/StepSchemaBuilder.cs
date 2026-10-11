@@ -21,6 +21,7 @@ public static class StepSchemaBuilder
     public static string DescribeTools(IReadOnlyList<AIFunctionDeclaration> tools)
     {
         var text = new StringBuilder();
+
         foreach (var tool in tools)
         {
             var parameters = new List<string>();
@@ -28,11 +29,13 @@ public static class StepSchemaBuilder
             var required = schema.TryGetProperty("required", out var r)
                 ? r.EnumerateArray().Select(e => e.GetString()).ToHashSet()
                 : [];
+
             if (schema.TryGetProperty("properties", out var properties))
             {
                 foreach (var property in properties.EnumerateObject())
                 {
-                    var type = property.Value.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : "any";
+                    var type = property.Value.TryGetProperty("type", out var t)
+                        && t.ValueKind == JsonValueKind.String ? t.GetString() : "any";
                     var optional = required.Contains(property.Name) ? "" : "?";
                     parameters.Add($"{property.Name}{optional}: {type}");
                 }
@@ -112,6 +115,7 @@ public static class StepSchemaBuilder
         node.Remove("description");
         node.Remove("$schema");
         node["type"] = "object";
+
         if (!node.ContainsKey("properties"))
         {
             node["properties"] = new JsonObject();

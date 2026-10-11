@@ -11,7 +11,8 @@ public class EvalCaseTests
         Directory.CreateDirectory(Path.Combine(folder.FullName, "cases"));
         Directory.CreateDirectory(Path.Combine(folder.FullName, "fixtures"));
         File.WriteAllText(Path.Combine(folder.FullName, "fixtures", "cfg.txt"), "no gateway");
-        File.WriteAllText(Path.Combine(folder.FullName, "cases", "a.yaml"), """
+        File.WriteAllText(Path.Combine(folder.FullName, "cases", "a.yaml"),
+                          """
             - id: net-001
               request: "wifi broken"
               expect_skill: wifi-no-internet

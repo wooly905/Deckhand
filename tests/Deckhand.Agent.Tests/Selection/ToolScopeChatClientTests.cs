@@ -13,29 +13,54 @@ public class ToolScopeChatClientTests
     private sealed class Harness
     {
         public ToolCatalog Catalog { get; } = new();
-        public ToolSelectionState State { get; }
+
+        public ToolSelectionState State
+        {
+            get;
+        }
+
         public ScriptedChatClient Inner { get; } = new();
+
         public IStepLimitPrompter Prompter { get; } = Substitute.For<IStepLimitPrompter>();
-        public List<AITool> Tools { get; }
-        public ToolScopeChatClient Client { get; }
+
+        public List<AITool> Tools
+        {
+            get;
+        }
+
+        public ToolScopeChatClient Client
+        {
+            get;
+        }
 
         public Harness(bool scopeTools = true, int maxActiveTools = 14)
         {
-            foreach (var (name, group) in new[] { ("app_find", ToolCatalog.BaseGroup), ("net_ping", "network"), ("net_dns_lookup", "network"), ("fs_list_dir", "files") })
+            foreach (var (name, group) in new[] {
+                ("app_find", ToolCatalog.BaseGroup),
+                ("net_ping", "network"),
+                ("net_dns_lookup", "network"),
+                ("fs_list_dir", "files")
+            })
             {
                 Catalog.Add(AIFunctionFactory.Create(() => "", name), group, RiskLevel.Read);
             }
 
             State = new ToolSelectionState(Catalog, maxActiveTools);
             Tools = [.. Catalog.BuildAgentTools(e => e.Function), AIFunctionFactory.Create(() => "", "load_skill")];
-            var skills = SkillCatalogWith(new SkillInfo("wifi-no-internet", "d", ["net_ping", "net_dns_lookup"], @"C:\s\wifi-no-internet", true));
+            var skills = SkillCatalogWith(new SkillInfo("wifi-no-internet",
+                                                        "d",
+                                                        ["net_ping", "net_dns_lookup"],
+                                                        @"C:\s\wifi-no-internet",
+                                                        true));
             Client = new ToolScopeChatClient(Inner, State, skills, Prompter, scopeTools);
         }
 
         public async Task<ChatOptions> Send(params ChatMessage[] messages)
         {
             Inner.Reply("ok");
-            await Client.GetResponseAsync(messages.Length == 0 ? [new ChatMessage(ChatRole.User, "hi")] : messages, new ChatOptions { Tools = Tools }, Ct);
+            await Client.GetResponseAsync(messages.Length == 0 ? [new ChatMessage(ChatRole.User, "hi")] : messages,
+                                          new ChatOptions { Tools = Tools },
+                                          Ct);
             return Inner.Calls[^1].Options!;
         }
     }
@@ -45,14 +70,17 @@ public class ToolScopeChatClientTests
         var root = Directory.CreateTempSubdirectory("deckhand-scope-");
         var dir = Directory.CreateDirectory(Path.Combine(root.FullName, skill.Name));
         File.WriteAllText(Path.Combine(dir.FullName, "SKILL.md"),
-            $"---\nname: {skill.Name}\ndescription: {skill.Description}\nmetadata:\n  tools: \"{string.Join(' ', skill.Tools)}\"\n---\nbody");
+                          $"---\nname: {skill.Name}\ndescription: {skill.Description}\nmetadata:\n  tools: \"{string.Join(' ', skill.Tools)}\"\n---\nbody");
         return SkillCatalog.Load([(root.FullName, true)]);
     }
 
     private static ChatMessage[] LoadSkillHistory(string callId = "s1") =>
     [
         new(ChatRole.User, "wifi broken"),
-        new(ChatRole.Assistant, [new FunctionCallContent(callId, "load_skill", new Dictionary<string, object?> { ["skillName"] = "wifi-no-internet" })]),
+        new(ChatRole.Assistant,
+            [new FunctionCallContent(callId,
+                                     "load_skill",
+                                     new Dictionary<string, object?> { ["skillName"] = "wifi-no-internet" })]),
         new(ChatRole.Tool, [new FunctionResultContent(callId, "# Steps ...")]),
     ];
 
@@ -113,7 +141,10 @@ public class ToolScopeChatClientTests
         ChatMessage[] first =
         [
             new(ChatRole.User, "hi"),
-            new(ChatRole.Assistant, [new FunctionCallContent("call_0", "load_skill", new Dictionary<string, object?> { ["skillName"] = "no-such-skill" })]),
+            new(ChatRole.Assistant,
+                [new FunctionCallContent("call_0",
+                                         "load_skill",
+                                         new Dictionary<string, object?> { ["skillName"] = "no-such-skill" })]),
             new(ChatRole.Tool, [new FunctionResultContent("call_0", "Skill not found.")]),
         ];
         await h.Send(first);

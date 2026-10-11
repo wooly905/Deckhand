@@ -1,0 +1,71 @@
+<Window
+    x:Class="Deckhand.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Deckhand.App"
+    Title="Deckhand">
+    <Grid x:Name="Root" Padding="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Deckhand" Style="{StaticResource TitleTextBlockStyle}" FontSize="24" />
+                <TextBlock Text="Tell Deckhand what you want to do." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="New chat" Command="{x:Bind ViewModel.NewChatCommand}" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" VerticalAlignment="Center" />
+            <Button Grid.Column="2" Content="Settings" Click="Settings_Click" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" VerticalAlignment="Center" />
+        </Grid>
+        <StackPanel Grid.Row="1" Spacing="8">
+            <TextBlock x:Name="InputBanner" Visibility="Collapsed" Text="Deckhand is using the mouse and keyboard — press Ctrl+Alt+Q to stop." TextWrapping="Wrap" />
+        </StackPanel>
+        <ScrollViewer x:Name="ConversationScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Messages}" FontSize="{ThemeResource ControlContentThemeFontSize}" SizeChanged="ConversationContent_SizeChanged">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{Binding Background}" BorderBrush="{Binding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="{Binding Margin}" HorizontalAlignment="{Binding Alignment}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding Speaker}" FontWeight="SemiBold" Foreground="{Binding Foreground}" />
+                                <local:MarkdownMessage Text="{Binding Text}" IsMarkdown="{Binding IsMarkdown}" FontSize="{ThemeResource ControlContentThemeFontSize}" Foreground="{Binding Foreground}" HorizontalContentAlignment="Stretch" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <Border x:Name="PromptPanel" Grid.Row="3" Visibility="Collapsed" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource AccentFillColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="PromptTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="PromptText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                </ScrollViewer>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="PromptPrimary" Tag="Primary" Click="Prompt_Click" />
+                    <Button x:Name="PromptSecondary" Tag="Secondary" Click="Prompt_Click" />
+                    <Button x:Name="PromptClose" Tag="None" Click="Prompt_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <StackPanel Grid.Row="4" Spacing="8">
+            <Button Content="Start a new request instead" Command="{x:Bind ViewModel.StartNewRequestCommand}" Visibility="{x:Bind ReplyVisibility(ViewModel.AwaitingReply), Mode=OneWay}" />
+            <TextBox x:Name="CommandInput" Text="{x:Bind ViewModel.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="For example: open Paint" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="66" MaxHeight="135" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" PreviewKeyDown="CommandInput_PreviewKeyDown" AutomationProperties.Name="Command text" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="Ctrl+Enter to send" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Stop" Command="{x:Bind ViewModel.SendCancelCommand}" />
+                <Button Grid.Column="2" Content="Send" Command="{x:Bind ViewModel.SendCommand}" Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
+        </StackPanel>
+        <Grid Grid.Row="5" ColumnSpacing="10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" />
+            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Status, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+        </Grid>
+    </Grid>
+</Window>

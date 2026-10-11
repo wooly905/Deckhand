@@ -14,19 +14,30 @@ if (!options.TryGetValue("config", out var configPath))
 var settings = ModelSettings.Load(File.ReadAllText(configPath));
 if (options.TryGetValue("args-schema", out var argsSchema))
 {
-    settings = settings with { Chat = settings.Chat with { ArgsSchema = Enum.Parse<ArgsSchemaMode>(argsSchema, ignoreCase: true) } };
+    settings = settings with
+    {
+        Chat = settings.Chat with
+        {
+            ArgsSchema = Enum.Parse<ArgsSchemaMode>(argsSchema, ignoreCase: true)
+        }
+    };
 }
 
 var evalRoot = Path.GetDirectoryName(Path.GetFullPath(options.GetValueOrDefault("tools", "eval/tools.json")))!;
 var factory = new EndpointFactory(settings, new EnvironmentSecretStore());
-var runner = new EvalRunner(
-    factory.CreateChatClient, settings.Chat,
-    FakeToolManifest.Load(options.GetValueOrDefault("tools", "eval/tools.json")),
-    Path.GetFullPath(options.GetValueOrDefault("skills", "skills")), evalRoot,
-    docsAvailable: options.ContainsKey("docs"));
+var runner = new EvalRunner(factory.CreateChatClient,
+                            settings.Chat,
+                            FakeToolManifest.Load(options.GetValueOrDefault("tools", "eval/tools.json")),
+                            Path.GetFullPath(options.GetValueOrDefault("skills", "skills")),
+                            evalRoot,
+                            docsAvailable: options.ContainsKey("docs"));
 
 using var cts = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    cts.Cancel();
+};
 
 var cases = EvalCase.LoadFolder(options.GetValueOrDefault("cases", "eval/cases"));
 var summary = await runner.RunAllAsync(cases, cts.Token);
@@ -73,5 +84,7 @@ static Dictionary<string, string> ParseArgs(string[] args)
 internal sealed class EnvironmentSecretStore : ISecretStore
 {
     public string? Read(string name) =>
-        Environment.GetEnvironmentVariable("DECKHAND_KEY_" + new string(name.ToUpperInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_').ToArray()));
+        Environment.GetEnvironmentVariable("DECKHAND_KEY_" + new string(name.ToUpperInvariant()
+        .Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_')
+        .ToArray()));
 }

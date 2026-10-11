@@ -60,7 +60,8 @@ public class UndoToolsTests
         var result = tools.UndoLast();
 
         Assert.Equal("c.jpg", wallpaper.Value);
-        Assert.Equal("This setting was changed after Deckhand changed it. Current: c.jpg. To restore a.jpg anyway, call undo_last with force=true.", result);
+        Assert.Equal("This setting was changed after Deckhand changed it. Current: c.jpg. To restore a.jpg anyway, call undo_last with force=true.",
+                     result);
 
         tools.UndoLast(force: true);
         Assert.Equal("a.jpg", wallpaper.Value);

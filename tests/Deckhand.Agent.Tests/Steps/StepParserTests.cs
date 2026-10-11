@@ -8,7 +8,9 @@ public class StepParserTests
     [Fact]
     public void Parses_a_tool_step()
     {
-        Assert.True(StepParser.TryParse("""{"thought":"check","action":"net_ping","args":{"host":"1.1.1.1","count":2}}""", out var step, out _));
+        Assert.True(StepParser.TryParse("""{"thought":"check","action":"net_ping","args":{"host":"1.1.1.1","count":2}}""",
+                                        out var step,
+                                        out _));
 
         Assert.Equal("check", step!.Thought);
         Assert.Equal("net_ping", step.Action);
@@ -20,7 +22,9 @@ public class StepParserTests
     [Fact]
     public void Parses_a_final_answer()
     {
-        Assert.True(StepParser.TryParse("""{"thought":"done","action":"final_answer","answer":"Your gateway is down."}""", out var step, out _));
+        Assert.True(StepParser.TryParse("""{"thought":"done","action":"final_answer","answer":"Your gateway is down."}""",
+                                        out var step,
+                                        out _));
 
         Assert.True(step!.IsFinal);
         Assert.Equal("Your gateway is down.", step.Answer);

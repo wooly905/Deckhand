@@ -1,4 +1,5 @@
 using Deckhand.Agent.Approval;
+using Deckhand.Agent.Settings;
 using Deckhand.Agent.Tests.Fakes;
 using NSubstitute;
 
@@ -12,13 +13,174 @@ public class AgentRunnerTests
 
     private static string Final(string answer, string action = "final_answer") => $$"""{"thought":"t","action":"{{action}}","answer":"{{answer}}"}""";
 
-    private static async Task<(AgentRunner Runner, DeckhandSession Session, ListAuditLog Audit, IApprovalPrompter Prompter)> Create(ScriptedChatClient model)
+    private static async Task<(AgentRunner Runner,
+                               DeckhandSession Session,
+                               ListAuditLog Audit,
+                               IApprovalPrompter Prompter)> Create(ScriptedChatClient model, ChatSettings? chat = null)
     {
-        var deps = AgentFactoryTests.Dependencies(model);
+        var deps = AgentFactoryTests.Dependencies(model, chat);
         var session = await new AgentFactory(deps).CreateSessionAsync(Ct);
         var prompter = Substitute.For<IApprovalPrompter>();
         var audit = (ListAuditLog)deps.Audit;
         return (new AgentRunner(session, prompter, audit), session, audit, prompter);
+    }
+
+    [Fact]
+    public async Task Reasoning_only_native_reply_switches_to_structured_steps_for_the_conversation()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyCall("enable_tools", new Dictionary<string, object?> { ["group"] = "network" })
+            .ReplyWith((_, _) => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                                                                 [new TextReasoningContent("I need to ping the host.")]))
+            {
+                FinishReason = ChatFinishReason.Stop
+            })
+            .Reply(ToolStep("net_ping", """{"host":"1.1.1.1"}"""))
+            .Reply(Final("The host answers."))
+            .Reply(ToolStep("enable_tools", """{"group":"network"}"""))
+            .Reply(ToolStep("net_ping", """{"host":"8.8.8.8"}"""))
+            .Reply(Final("The second host answers."));
+        var (runner, _, audit, _) = await Create(model, new ChatSettings { StepMode = StepMode.Native });
+
+        var first = await runner.RunAsync("is 1.1.1.1 up?", cancellationToken: Ct);
+        var second = await runner.RunAsync("check 8.8.8.8 too", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Answered, first.Status);
+        Assert.Equal("The host answers.", first.Text);
+        Assert.Equal(RunStatus.Answered, second.Status);
+        Assert.Equal("The second host answers.", second.Text);
+        Assert.IsType<ChatResponseFormatJson>(model.Calls[2].Options!.ResponseFormat);
+        Assert.IsType<ChatResponseFormatJson>(model.Calls[4].Options!.ResponseFormat);
+        Assert.Contains(model.Calls[2].Messages, m => m.Text.Contains("Enabled: network."));
+        var fallback = Assert.Single(audit.Entries, e => e.Kind == "model_fallback");
+        Assert.Equal("structured", fallback.Status);
+        Assert.Contains("I need to ping the host.", fallback.Result);
+        Assert.DoesNotContain(audit.Entries, e => e.Kind == "response" && e.Status == "empty");
+    }
+
+    [Fact]
+    public async Task Reasoning_only_fallback_preserves_change_tool_approval()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyWith((_, _) => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                                                                 [new TextReasoningContent("I need to set the wallpaper.")])))
+            .Reply(ToolStep("enable_tools", """{"group":"personalize"}"""))
+            .Reply(ToolStep("wallpaper_set", """{"path":"C:\\b.jpg"}"""))
+            .Reply(Final("Done."));
+        var (runner, _, audit, prompter) = await Create(model,
+                                                      new ChatSettings
+                                                      {
+                                                          StepMode = StepMode.Native,
+                                                          AutoApproveTools = false
+                                                      });
+        prompter.AskAsync(default!, default!, Ct).ReturnsForAnyArgs(ApprovalAnswer.Allow);
+
+        var result = await runner.RunAsync("set wallpaper", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Answered, result.Status);
+        Assert.Equal("Done.", result.Text);
+        await prompter.ReceivedWithAnyArgs(1).AskAsync(default!, default!, Ct);
+        Assert.Contains(audit.Entries, e => e is { Kind: "call", Tool: "wallpaper_set", Decision: "approved" });
+    }
+
+    [Fact]
+    public async Task Native_tool_call_with_reasoning_is_executed_without_fallback()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyWith((_, _) => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                                                                 [
+                                                                     new TextReasoningContent("Enable network tools."),
+                                                                     new FunctionCallContent("enable", "enable_tools",
+                                                                                             new Dictionary<string, object?> { ["group"] = "network" })
+                                                                 ])))
+            .Reply("Ready.");
+        var (runner, _, audit, _) = await Create(model, new ChatSettings { StepMode = StepMode.Native });
+
+        var result = await runner.RunAsync("prepare network tools", cancellationToken: Ct);
+
+        Assert.Equal("Ready.", result.Text);
+        Assert.Null(model.Calls[1].Options!.ResponseFormat);
+        Assert.Contains(audit.Entries, e => e is { Kind: "call", Tool: "enable_tools", Success: true });
+        Assert.DoesNotContain(audit.Entries, e => e.Kind == "model_fallback");
+    }
+
+    [Fact]
+    public async Task Native_reply_with_reasoning_and_an_answer_does_not_switch_modes()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyWith((_, _) => new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                                                                 [new TextReasoningContent("Greeting."), new TextContent("Hello.")])))
+            .Reply("Hi again.");
+        var (runner, _, audit, _) = await Create(model, new ChatSettings { StepMode = StepMode.Native });
+
+        var first = await runner.RunAsync("hello", cancellationToken: Ct);
+        var second = await runner.RunAsync("hello again", cancellationToken: Ct);
+
+        Assert.Equal("Hello.", first.Text);
+        Assert.Equal("Hi again.", second.Text);
+        Assert.Null(model.Calls[1].Options!.ResponseFormat);
+        Assert.DoesNotContain(audit.Entries, e => e.Kind == "model_fallback");
+    }
+
+    [Fact]
+    public async Task Empty_native_answer_after_enabling_tools_continues_with_the_active_group()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyCall("enable_tools", new Dictionary<string, object?> { ["group"] = "network" })
+            .Reply("")
+            .ReplyCall("net_ping", new Dictionary<string, object?> { ["host"] = "1.1.1.1" })
+            .Reply("The host answers.");
+        var (runner, session, audit, _) = await Create(model, new ChatSettings { StepMode = StepMode.Native });
+
+        var result = await runner.RunAsync("is 1.1.1.1 up?", cancellationToken: Ct);
+
+        Assert.Equal(new RunResult(RunStatus.Answered, "The host answers.", 4), result);
+        Assert.Contains("group:network", session.Selection.ActiveKeys);
+        Assert.Contains(model.Calls[2].Options!.Tools!, t => t.Name == "net_ping");
+        Assert.Contains(model.Calls[2].Messages.SelectMany(m => m.Contents),
+                        c => c is FunctionResultContent { Result: "Enabled: network." });
+        Assert.Contains(audit.Entries, e => e is { Kind: "response", Status: "empty", Success: false });
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \n\t")]
+    public async Task Repeated_empty_native_answers_fail_with_a_visible_message(string text)
+    {
+        var model = new ScriptedChatClient().Reply(text).Reply(text);
+        var (runner, _, audit, _) = await Create(model, new ChatSettings { StepMode = StepMode.Native });
+
+        var result = await runner.RunAsync("hello", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Failed, result.Status);
+        Assert.Contains("empty response", result.Text);
+        Assert.False(runner.AwaitingReply);
+        Assert.Equal(2, model.Calls.Count);
+        Assert.Equal(2, audit.Entries.Count(e => e.Kind == "response" && e.Status == "empty"));
+    }
+
+    [Fact]
+    public async Task Empty_answer_recovery_still_requires_approval_for_change_tools()
+    {
+        var model = new ScriptedChatClient()
+            .ReplyCall("enable_tools", new Dictionary<string, object?> { ["group"] = "personalize" })
+            .Reply("")
+            .ReplyCall("wallpaper_set", new Dictionary<string, object?> { ["path"] = "C:\\b.jpg" })
+            .Reply("Done.");
+        var (runner, _, audit, prompter) = await Create(model,
+                                                      new ChatSettings
+                                                      {
+                                                          StepMode = StepMode.Native,
+                                                          AutoApproveTools = false
+                                                      });
+        prompter.AskAsync(default!, default!, Ct).ReturnsForAnyArgs(ApprovalAnswer.Allow);
+
+        var result = await runner.RunAsync("set wallpaper", cancellationToken: Ct);
+
+        Assert.Equal(RunStatus.Answered, result.Status);
+        Assert.Equal("Done.", result.Text);
+        await prompter.ReceivedWithAnyArgs(1).AskAsync(default!, default!, Ct);
+        Assert.Contains(audit.Entries, e => e is { Kind: "call", Tool: "wallpaper_set", Decision: "approved" });
     }
 
     [Fact]
@@ -33,8 +195,13 @@ public class AgentRunnerTests
         var result = await runner.RunAsync("is 1.1.1.1 up?", cancellationToken: Ct);
 
         Assert.Equal(new RunResult(RunStatus.Answered, "The host answers.", 3), result);
-        Assert.Contains("<observation tool=\"net_ping\">reply from 1.1.1.1</observation>", model.Calls[2].Messages.Select(m => m.Text));
+        Assert.Contains("<observation tool=\"net_ping\">reply from 1.1.1.1</observation>",
+                        model.Calls[2].Messages.Select(m => m.Text));
         Assert.Contains(audit.Entries, e => e is { Kind: "call", Tool: "net_ping", Success: true });
+        var enabled = Assert.Single(audit.Entries, e => e.Kind == "call" && e.Tool == "enable_tools");
+        Assert.Contains("network", enabled.Arguments);
+        Assert.False(string.IsNullOrWhiteSpace(enabled.Result));
+        Assert.Contains(audit.Entries, e => e.Kind == "call_start" && e.CallId == enabled.CallId);
         Assert.Equal(0, session.Ledger.UnapprovedCalls);
     }
 
@@ -46,13 +213,19 @@ public class AgentRunnerTests
             .Reply(ToolStep("wallpaper_set", """{"path":"C:\\b.jpg"}"""))
             .Reply(Final("Done."));
         var (runner, session, audit, prompter) = await Create(model);
-        prompter.AskAsync(Arg.Any<FunctionCallContent>(), Arg.Any<ApprovalDecision>(), Arg.Any<CancellationToken>()).Returns(ApprovalAnswer.Allow);
+        prompter.AskAsync(Arg.Any<FunctionCallContent>(), Arg.Any<ApprovalDecision>(), Arg.Any<CancellationToken>())
+            .Returns(ApprovalAnswer.Allow);
 
         var result = await runner.RunAsync("set wallpaper", cancellationToken: Ct);
 
         Assert.Equal("Done.", result.Text);
-        Assert.Contains(audit.Entries, e => e is { Kind: "approval", Tool: "wallpaper_set", Decision: "approved", Risk: "Change" });
+        Assert.Contains(audit.Entries,
+                        e => e is { Kind: "approval", Tool: "wallpaper_set", Decision: "approved", Risk: "Change" });
         Assert.Contains(audit.Entries, e => e is { Kind: "call", Tool: "wallpaper_set", Decision: "approved" });
+        var approval = Assert.Single(audit.Entries, e => e.Kind == "approval" && e.Tool == "wallpaper_set");
+        var call = Assert.Single(audit.Entries, e => e.Kind == "call" && e.Tool == "wallpaper_set");
+        Assert.Equal(approval.CallId, call.CallId);
+        Assert.False(string.IsNullOrEmpty(call.CallId));
         Assert.Equal(0, session.Ledger.UnapprovedCalls);
     }
 
@@ -151,6 +324,7 @@ public class AgentRunnerTests
         Assert.Equal(RunStatus.Failed, result.Status);
         Assert.StartsWith("The model service is busy or not available.", result.Text);
     }
+
     [Fact]
     public async Task Stop_while_the_card_is_open_leaves_the_conversation_usable()
     {

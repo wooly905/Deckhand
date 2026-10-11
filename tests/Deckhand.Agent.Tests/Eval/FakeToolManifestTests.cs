@@ -23,9 +23,12 @@ public class FakeToolManifestTests
     {
         var specs = FakeToolManifest.Load(RepoPaths.File("eval/tools.json"));
         var calls = new List<ToolCallRecord>();
-        var catalog = FakeToolManifest.BuildCatalog(specs, new Dictionary<string, string> { ["net_ping"] = "timeout" }, calls);
+        var catalog = FakeToolManifest.BuildCatalog(specs,
+                                                    new Dictionary<string, string> { ["net_ping"] = "timeout" },
+                                                    calls);
 
-        var result = await catalog.Find("net_ping")!.Function.InvokeAsync(new AIFunctionArguments { ["host"] = "1.1.1.1" }, TestContext.Current.CancellationToken);
+        var result = await catalog.Find("net_ping")!.Function.InvokeAsync(new AIFunctionArguments { ["host"] = "1.1.1.1" },
+                                                                          TestContext.Current.CancellationToken);
 
         Assert.Equal("timeout", result?.ToString());
         var call = Assert.Single(calls);

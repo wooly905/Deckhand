@@ -1,3 +1,4 @@
+
 namespace Deckhand.Agent.Steps;
 
 /// <summary>One model output: a thought plus one action, or a final answer.</summary>

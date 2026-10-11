@@ -7,9 +7,12 @@ namespace Deckhand.Agent.Tests.Steps;
 public class ReActStepChatClientTests
 {
     private static readonly AIFunction Ping = AIFunctionFactory.Create((string host) => "", "net_ping", "Ping a host.");
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static (ReActStepChatClient Client, ScriptedChatClient Inner, StepEvents Events) Create(params string[] replies)
+    private static (ReActStepChatClient Client,
+                    ScriptedChatClient Inner,
+                    StepEvents Events) Create(params string[] replies)
     {
         var inner = new ScriptedChatClient();
         foreach (var reply in replies)

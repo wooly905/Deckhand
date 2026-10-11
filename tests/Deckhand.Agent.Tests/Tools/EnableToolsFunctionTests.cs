@@ -32,7 +32,8 @@ public class EnableToolsFunctionTests
     {
         var (function, state) = Create();
 
-        var result = await function.InvokeAsync(new AIFunctionArguments { ["group"] = "network" }, TestContext.Current.CancellationToken);
+        var result = await function.InvokeAsync(new AIFunctionArguments { ["group"] = "network" },
+                                                TestContext.Current.CancellationToken);
 
         Assert.Equal("Enabled: network.", result?.ToString());
         Assert.True(state.IsActive("net_ping"));
@@ -43,7 +44,8 @@ public class EnableToolsFunctionTests
     {
         var (function, _) = Create();
 
-        var result = await function.InvokeAsync(new AIFunctionArguments { ["group"] = "wifi" }, TestContext.Current.CancellationToken);
+        var result = await function.InvokeAsync(new AIFunctionArguments { ["group"] = "wifi" },
+                                                TestContext.Current.CancellationToken);
 
         Assert.Equal("Unknown group 'wifi'. Groups: network, printers.", result?.ToString());
     }

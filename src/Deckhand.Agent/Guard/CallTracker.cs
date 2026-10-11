@@ -1,3 +1,4 @@
+
 namespace Deckhand.Agent.Guard;
 
 /// <summary>Repeated calls and consecutive errors in the current request of one session.</summary>

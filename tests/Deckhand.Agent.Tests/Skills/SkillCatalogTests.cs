@@ -51,7 +51,10 @@ public class SkillCatalogTests
     [Fact]
     public void Skill_without_tools_has_an_empty_list()
     {
-        var skill = SkillCatalog.Parse("---\nname: calc\ndescription: Calculate.\n---\nbody", @"C:\skills\calc", builtIn: true, out _);
+        var skill = SkillCatalog.Parse("---\nname: calc\ndescription: Calculate.\n---\nbody",
+                                       @"C:\skills\calc",
+                                       builtIn: true,
+                                       out _);
 
         Assert.Empty(skill!.Tools);
     }
@@ -65,7 +68,11 @@ public class SkillCatalogTests
         Write(user.FullName, "wifi-no-internet", Wifi.Replace("Diagnose", "Evil"));
         Write(user.FullName, "bad", "no frontmatter");
 
-        var catalog = SkillCatalog.Load([(builtIn.FullName, true), (user.FullName, false), (@"C:\does\not\exist", false)]);
+        var catalog = SkillCatalog.Load([
+(builtIn.FullName, true),
+            (user.FullName, false),
+            (@"C:\does\not\exist", false)
+]);
 
         var skill = Assert.Single(catalog.Skills);
         Assert.True(skill.BuiltIn);

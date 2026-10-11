@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Deckhand.Agent/Deckhand.Agent.csproj" />
+    <Project Path="src/Deckhand.App/Deckhand.App.csproj" />
+    <Project Path="src/Deckhand.Windows/Deckhand.Windows.csproj" />
     <Project Path="src/Deckhand.Eval/Deckhand.Eval.csproj" />
   </Folder>
   <Folder Name="/tests/">

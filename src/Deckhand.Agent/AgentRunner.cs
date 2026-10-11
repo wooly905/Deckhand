@@ -7,34 +7,18 @@ using Microsoft.Extensions.AI;
 
 namespace Deckhand.Agent;
 
-public enum RunStatus
-{
-    Answered,
-    AskedUser,
-    Cancelled,
-    Failed,
-}
-
 public sealed record RunResult(RunStatus Status, string Text, int Steps);
-
-public enum ApprovalAnswer
-{
-    Deny,
-    Allow,
-    AllowForConversation,
-}
-
-/// <summary>Shows the approval card. M1c implements it in WPF.</summary>
-public interface IApprovalPrompter
-{
-    Task<ApprovalAnswer> AskAsync(FunctionCallContent call, ApprovalDecision decision, CancellationToken cancellationToken);
-}
 
 /// <summary>Runs one user message: new request or ask_user reply, approvals, Stop.</summary>
 public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter approvals, IAuditLog audit)
 {
     private const int MaxReasonChars = 200;
     private const string InterruptedReason = "The request was stopped before this action finished.";
+    private const string ContinueAfterEmptyResponse =
+        "Your last response was empty. Continue the current request using the available tools if needed, "
+        + "then give a non-empty answer. Do not repeat actions that already succeeded.";
+    private const string EmptyResponseError =
+        "The model returned an empty response twice. The request could not be completed. Try again or select a different model in Settings.";
 
     // Approval requests left in the session history by a run that was stopped or failed.
     // They are answered (denied) at the start of the next run, or the chat client rejects the history.
@@ -42,7 +26,9 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
 
     public bool AwaitingReply => session.Selection.AwaitingReply;
 
-    public async Task<RunResult> RunAsync(string text, bool forceNewRequest = false, CancellationToken cancellationToken = default)
+    public async Task<RunResult> RunAsync(string text,
+                                          bool forceNewRequest = false,
+                                          CancellationToken cancellationToken = default)
     {
         var isReply = session.Selection.AwaitingReply && !forceNewRequest;
         if (!isReply)
@@ -56,7 +42,10 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
         var messages = new List<ChatMessage>();
         if (_unanswered is { Count: > 0 } unanswered)
         {
-            messages.Add(new ChatMessage(ChatRole.User, unanswered.Select(r => (AIContent)r.CreateResponse(false, InterruptedReason)).ToList()));
+            messages.Add(new ChatMessage(ChatRole.User,
+                                         unanswered.Select(r => (AIContent)r.CreateResponse(false,
+                                                                                            InterruptedReason))
+                .ToList()));
         }
 
         messages.Add(isReply ? new ChatMessage(ChatRole.User, text) : TranscriptWriter.NewRequest(text));
@@ -65,22 +54,59 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
         {
             var response = await session.Agent.RunAsync(messages, session.Session, cancellationToken: cancellationToken);
             _unanswered = null;
-            while (response.Messages.SelectMany(m => m.Contents).OfType<ToolApprovalRequestContent>().ToList() is { Count: > 0 } requests)
+            var retriedEmptyResponse = false;
+            while (true)
             {
-                _unanswered = requests;
-                var answers = new List<AIContent>();
-                foreach (var request in requests)
+                while (response.Messages.SelectMany(m => m.Contents)
+                    .OfType<ToolApprovalRequestContent>()
+                    .ToList() is { Count: > 0 } requests)
                 {
-                    answers.Add(await DecideAsync(request, cancellationToken));
+                    _unanswered = requests;
+                    var answers = new List<AIContent>();
+                    foreach (var request in requests)
+                    {
+                        answers.Add(await DecideAsync(request, cancellationToken));
+                    }
+
+                    response = await session.Agent.RunAsync(new ChatMessage(ChatRole.User, answers),
+                                                            session.Session,
+                                                            cancellationToken: cancellationToken);
+                    _unanswered = null;
                 }
 
-                response = await session.Agent.RunAsync(new ChatMessage(ChatRole.User, answers), session.Session, cancellationToken: cancellationToken);
-                _unanswered = null;
-            }
+                if (string.IsNullOrWhiteSpace(response.Text))
+                {
+                    audit.Write(new AuditEntry(DateTimeOffset.Now,
+                                               "response",
+                                               session.Ledger.CurrentRequest,
+                                               "",
+                                               "{}",
+                                               "None",
+                                               null,
+                                               false,
+                                               Status: "empty",
+                                               Result: response.Text,
+                                               Error: retriedEmptyResponse
+                                                   ? EmptyResponseError : "Empty model answer; continuing the current request once."));
+                    if (retriedEmptyResponse)
+                    {
+                        return new RunResult(RunStatus.Failed, EmptyResponseError, session.Selection.StepCount);
+                    }
 
-            var asked = session.Steps.LastFinalAction == StepSchemaBuilder.AskUser;
-            session.Selection.AwaitingReply = asked;
-            return new RunResult(asked ? RunStatus.AskedUser : RunStatus.Answered, response.Text, session.Selection.StepCount);
+                    // Continue the existing session so tool results, approvals, and active groups are retained.
+                    retriedEmptyResponse = true;
+                    response = await session.Agent.RunAsync(new ChatMessage(ChatRole.User, ContinueAfterEmptyResponse),
+                                                            session.Session,
+                                                            cancellationToken: cancellationToken);
+                    continue;
+                }
+
+                var asked = session.Steps.LastFinalAction == StepSchemaBuilder.AskUser;
+                session.Selection.AwaitingReply = asked;
+                return new RunResult(asked ? RunStatus.AskedUser : RunStatus.Answered,
+                                     response.Text,
+                                     session.Selection.StepCount);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -90,14 +116,17 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
         {
             // An OperationCanceledException without the caller's token is a model-side timeout.
             var reason = ex.Message.Length > MaxReasonChars ? ex.Message[..MaxReasonChars] : ex.Message;
-            return new RunResult(RunStatus.Failed, $"The model service is busy or not available. {reason}", session.Selection.StepCount);
+            return new RunResult(RunStatus.Failed,
+                                 $"The model service is busy or not available. {reason}",
+                                 session.Selection.StepCount);
         }
     }
 
     private async Task<AIContent> DecideAsync(ToolApprovalRequestContent request, CancellationToken cancellationToken)
     {
         var call = (FunctionCallContent)request.ToolCall;
-        var decision = session.Policy.Decide(call);
+        var decision = await Task.Run(() => session.Policy.Decide(call), cancellationToken)
+            .WaitAsync(cancellationToken);
 
         bool approved;
         string label;
@@ -118,8 +147,16 @@ public sealed class AgentRunner(DeckhandSession session, IApprovalPrompter appro
         }
 
         session.Ledger.Record(call.CallId, approved);
-        audit.Write(new AuditEntry(DateTimeOffset.Now, "approval", session.Ledger.CurrentRequest, call.Name,
-            JsonSerializer.Serialize(call.Arguments), session.Policy.RiskOf(call.Name)?.ToString() ?? "Unknown", label, null));
+        audit.Write(new AuditEntry(DateTimeOffset.Now,
+                                   "approval",
+                                   session.Ledger.CurrentRequest,
+                                   call.Name,
+                                   JsonSerializer.Serialize(call.Arguments),
+                                   session.Policy.RiskOf(call.Name)?.ToString() ?? "Unknown",
+                                   label,
+                                   null,
+                                   CallId: call.CallId,
+                                   Status: label));
 
         return request.CreateResponse(approved, approved ? null : "The user denied this action.");
     }

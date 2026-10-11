@@ -6,7 +6,13 @@ using Microsoft.Extensions.AI;
 
 namespace Deckhand.Eval;
 
-public sealed record FakeToolSpec(string Name, string Description, string Group, RiskLevel Risk, bool PolicyDriven, JsonElement Parameters, string Output);
+public sealed record FakeToolSpec(string Name,
+                                  string Description,
+                                  string Group,
+                                  RiskLevel Risk,
+                                  bool PolicyDriven,
+                                  JsonElement Parameters,
+                                  string Output);
 
 public sealed record ToolCallRecord(string Name, IReadOnlyDictionary<string, string> Args);
 
@@ -19,11 +25,14 @@ public sealed class FakeAIFunction(FakeToolSpec spec, string output, List<ToolCa
 
     public override JsonElement JsonSchema => spec.Parameters;
 
-    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments,
+                                                          CancellationToken cancellationToken)
     {
         lock (calls)
         {
-            calls.Add(new ToolCallRecord(spec.Name, arguments.ToDictionary(a => a.Key, a => TranscriptWriter.ObservationText(a.Value))));
+            calls.Add(new ToolCallRecord(spec.Name,
+                                         arguments.ToDictionary(a => a.Key,
+                                                                a => TranscriptWriter.ObservationText(a.Value))));
         }
 
         return ValueTask.FromResult<object?>(output);
@@ -42,7 +51,9 @@ public static class FakeToolManifest
         JsonSerializer.Deserialize<List<FakeToolSpec>>(File.ReadAllText(path), JsonOptions)
         ?? throw new InvalidDataException($"{path} has no tools.");
 
-    public static ToolCatalog BuildCatalog(IReadOnlyList<FakeToolSpec> specs, IReadOnlyDictionary<string, string> outputs, List<ToolCallRecord> calls)
+    public static ToolCatalog BuildCatalog(IReadOnlyList<FakeToolSpec> specs,
+                                           IReadOnlyDictionary<string, string> outputs,
+                                           List<ToolCallRecord> calls)
     {
         var catalog = new ToolCatalog();
         foreach (var spec in specs)

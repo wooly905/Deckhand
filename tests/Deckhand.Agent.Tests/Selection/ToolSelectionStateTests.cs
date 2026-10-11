@@ -40,7 +40,8 @@ public class ToolSelectionStateTests
 
         Assert.Equal(["group:files", "group:system"], state.ActiveKeys.Order());
         Assert.Equal("skill:find-large-files", Assert.Single(result.Removed).Key);
-        Assert.Equal("Enabled: system. Removed: find-large-files (disk_1, disk_2, disk_3, disk_4 are no longer available).", result.Describe());
+        Assert.Equal("Enabled: system. Removed: find-large-files (disk_1, disk_2, disk_3, disk_4 are no longer available).",
+                     result.Describe());
     }
 
     [Fact]

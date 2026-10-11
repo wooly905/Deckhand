@@ -16,8 +16,13 @@ public sealed class TranscriptWriter(int contextWindow)
 
     private int ScratchpadBudget => Math.Max(2000, contextWindow - 6000);
 
-    public static ChatMessage NewRequest(string text) =>
-        new(ChatRole.User, text) { AdditionalProperties = new() { [RequestMarker] = true } };
+    public static ChatMessage NewRequest(string text) => new(ChatRole.User, text)
+    {
+        AdditionalProperties = new()
+        {
+            [RequestMarker] = true
+        }
+    };
 
     public static string ObservationText(object? result) => result switch
     {
@@ -28,7 +33,9 @@ public sealed class TranscriptWriter(int contextWindow)
         _ => JsonSerializer.Serialize(result),
     };
 
-    public List<ChatMessage> Write(IEnumerable<ChatMessage> history, string? instructions, IReadOnlyList<AIFunctionDeclaration> tools)
+    public List<ChatMessage> Write(IEnumerable<ChatMessage> history,
+                                   string? instructions,
+                                   IReadOnlyList<AIFunctionDeclaration> tools)
     {
         var all = history.ToList();
         var systemText = new StringBuilder();
@@ -38,19 +45,25 @@ public sealed class TranscriptWriter(int contextWindow)
         }
 
         var nonSystem = all.Where(m => m.Role != ChatRole.System).ToList();
-        var start = nonSystem.FindLastIndex(m => m.Role == ChatRole.User && m.AdditionalProperties?.ContainsKey(RequestMarker) == true);
+        var start = nonSystem.FindLastIndex(m => m.Role == ChatRole.User
+            && m.AdditionalProperties?.ContainsKey(RequestMarker) == true);
         if (start < 0)
         {
             start = 0;
         }
 
-        var result = new List<ChatMessage> { new(ChatRole.System, BuildSystem(instructions, systemText.ToString(), tools)) };
+        var result = new List<ChatMessage> { new(ChatRole.System,
+                                                 BuildSystem(instructions,
+                                                             systemText.ToString(),
+                                                             tools)) };
         result.AddRange(PreviousRequests(nonSystem[..start]));
         result.AddRange(TrimScratchpad(CurrentRequest(nonSystem[start..])));
         return result;
     }
 
-    private static string BuildSystem(string? instructions, string extraSystem, IReadOnlyList<AIFunctionDeclaration> tools)
+    private static string BuildSystem(string? instructions,
+                                      string extraSystem,
+                                      IReadOnlyList<AIFunctionDeclaration> tools)
     {
         var text = new StringBuilder();
         text.Append(instructions?.Trim()).Append("\n\n");
@@ -72,7 +85,8 @@ public sealed class TranscriptWriter(int contextWindow)
         for (var i = earlier.Count - 1; i >= 0; i--)
         {
             var message = earlier[i];
-            var textOnly = message.Contents.All(c => c is TextContent or TextReasoningContent) && !string.IsNullOrWhiteSpace(message.Text);
+            var textOnly = message.Contents.All(c => c is TextContent or TextReasoningContent)
+                && !string.IsNullOrWhiteSpace(message.Text);
             if (!textOnly || (message.Role != ChatRole.User && message.Role != ChatRole.Assistant))
             {
                 continue;
@@ -109,7 +123,11 @@ public sealed class TranscriptWriter(int contextWindow)
                 if (calls.Count == 0 && !string.IsNullOrWhiteSpace(message.Text))
                 {
                     var action = message.AdditionalProperties?.TryGetValue(ActionKey, out var a) == true ? a?.ToString() : null;
-                    result.Add(new ChatMessage(ChatRole.Assistant, StepJson(thought, action ?? StepSchemaBuilder.FinalAnswer, null, message.Text)));
+                    result.Add(new ChatMessage(ChatRole.Assistant,
+                                               StepJson(thought,
+                                                        action ?? StepSchemaBuilder.FinalAnswer,
+                                                        null,
+                                                        message.Text)));
                 }
             }
             else if (message.Role == ChatRole.Tool || message.Contents.Any(c => c is FunctionResultContent))
@@ -131,7 +149,10 @@ public sealed class TranscriptWriter(int contextWindow)
 
     private List<ChatMessage> TrimScratchpad(List<ChatMessage> scratchpad)
     {
-        var observations = scratchpad.Select((m, i) => (m, i)).Where(x => x.m.Text.StartsWith("<observation", StringComparison.Ordinal)).Select(x => x.i).ToList();
+        var observations = scratchpad.Select((m, i) => (m, i)).Where(x => x.m.Text.StartsWith("<observation",
+                                                                                              StringComparison.Ordinal))
+            .Select(x => x.i)
+            .ToList();
         var total = scratchpad.Sum(m => Tokens(m.Text));
         foreach (var index in observations.Take(Math.Max(0, observations.Count - 1)))
         {

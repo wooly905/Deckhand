@@ -49,4 +49,41 @@ public class UndoJournalTests
         Assert.False(journal.IsNewest(first));
         Assert.True(journal.IsNewest(second));
     }
+
+    [Fact]
+    public void Existing_registry_entries_with_different_casing_share_a_target()
+    {
+        var folder = Directory.CreateTempSubdirectory("deckhand-undo-").FullName;
+        try
+        {
+            var time = new ManualTimeProvider(Start);
+            var journal = new UndoJournal(folder, time);
+            var first = journal.Record("s1",
+                                       "registry",
+                                       "registry_set_value",
+                                       System.Text.Json.JsonSerializer.Serialize(new[] {
+                                           "HKCU\\Software\\Deckhand\\É",
+                                           "Value"
+                                       }),
+                                       null,
+                                       "A");
+            time.Now = Start.AddMinutes(1);
+            var second = journal.Record("s1",
+                                        "registry",
+                                        "registry_set_value",
+                                        System.Text.Json.JsonSerializer.Serialize(new[] {
+                                            "HKCU\\software\\deckhand\\é",
+                                            "value"
+                                        }),
+                                        "A",
+                                        "B");
+
+            Assert.False(new UndoJournal(folder, time).IsNewest(first));
+            Assert.True(new UndoJournal(folder, time).IsNewest(second));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
 }
