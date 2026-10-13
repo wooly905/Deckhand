@@ -5,6 +5,8 @@
     <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
+    <PlaywrightPlatform>win-x64</PlaywrightPlatform>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <UseWinUI>true</UseWinUI>
     <UseXamlCompilerExecutable>true</UseXamlCompilerExecutable>
     <WindowsPackageType>None</WindowsPackageType>
