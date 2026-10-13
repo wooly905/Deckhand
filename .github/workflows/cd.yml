@@ -1,0 +1,87 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  BUILD_NUMBER: ${{ github.run_number }}
+  # workflow_run: release the exact commit CI verified; workflow_dispatch: the selected ref.
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  release:
+    name: Publish and release
+    # Only release after a successful CI run triggered by a push (not a PR).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          $version = dotnet msbuild src/Deckhand.Agent/Deckhand.Agent.csproj -getProperty:Version -p:BuildNumber=$env:BUILD_NUMBER
+          "VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Version: $version"
+
+      - name: Publish single-file app
+        run: >-
+          dotnet publish src/Deckhand.App/Deckhand.App.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeAllContentForSelfExtract=true
+          -p:EnableMsixTooling=true
+          -p:DebugType=none
+          -p:BuildNumber=${{ env.BUILD_NUMBER }}
+          -o publish
+
+      - name: Package release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $exe = "dist/Deckhand-$env:VERSION-win-x64.exe"
+          Copy-Item publish/Deckhand.App.exe $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $exe -Leaf)" | Set-Content "$exe.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Deckhand-${{ env.VERSION }}-win-x64
+          path: dist/*
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$env:VERSION" dist/* `
+            --target $env:RELEASE_SHA `
+            --title "Deckhand $env:VERSION" `
+            --generate-notes
