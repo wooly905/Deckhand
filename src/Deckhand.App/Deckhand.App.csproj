@@ -11,6 +11,8 @@
     <UseXamlCompilerExecutable>true</UseXamlCompilerExecutable>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- WinUI looks up resources.pri or <exe name>.pri; CD renames the exe, so use the fixed name. -->
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\Deckhand.ico</ApplicationIcon>
   </PropertyGroup>
