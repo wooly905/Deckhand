@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WindowsAxon.Agent/WindowsAxon.Agent.csproj" />
+    <Project Path="src/WindowsAxon.App/WindowsAxon.App.csproj" />
+    <Project Path="src/WindowsAxon.Windows/WindowsAxon.Windows.csproj" />
+    <Project Path="src/WindowsAxon.Eval/WindowsAxon.Eval.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WindowsAxon.Agent.Tests/WindowsAxon.Agent.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -53,13 +53,13 @@ jobs:
       - name: Resolve version
         shell: pwsh
         run: |
-          $version = dotnet msbuild src/Deckhand.Agent/Deckhand.Agent.csproj -getProperty:Version -p:BuildNumber=$env:BUILD_NUMBER
+          $version = dotnet msbuild src/WindowsAxon.Agent/WindowsAxon.Agent.csproj -getProperty:Version -p:BuildNumber=$env:BUILD_NUMBER
           "VERSION=$version" >> $env:GITHUB_ENV
           Write-Host "Version: $version"
 
       - name: Publish single-file app
         run: >-
-          dotnet publish src/Deckhand.App/Deckhand.App.csproj
+          dotnet publish src/WindowsAxon.App/WindowsAxon.App.csproj
           -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true
           -p:IncludeAllContentForSelfExtract=true
@@ -72,14 +72,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          $exe = "dist/Deckhand-$env:VERSION-win-x64.exe"
-          Copy-Item publish/Deckhand.App.exe $exe
+          $exe = "dist/WindowsAxon-$env:VERSION-win-x64.exe"
+          Copy-Item publish/WindowsAxon.App.exe $exe
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path $exe -Leaf)" | Set-Content "$exe.sha256" -Encoding ascii
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Deckhand-${{ env.VERSION }}-win-x64
+          name: WindowsAxon-${{ env.VERSION }}-win-x64
           path: dist/*
 
       - name: Create GitHub release
@@ -89,5 +89,5 @@ jobs:
         run: |
           gh release create "v$env:VERSION" dist/* `
             --target $env:RELEASE_SHA `
-            --title "Deckhand $env:VERSION" `
+            --title "WindowsAxon $env:VERSION" `
             --generate-notes

@@ -36,10 +36,10 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore
-        run: dotnet restore Deckhand.slnx
+        run: dotnet restore WindowsAxon.slnx
 
       - name: Build
-        run: dotnet build Deckhand.slnx -c Release --no-restore -p:BuildNumber=${{ github.run_number }}
+        run: dotnet build WindowsAxon.slnx -c Release --no-restore -p:BuildNumber=${{ github.run_number }}
 
       - name: Test
-        run: dotnet test --solution Deckhand.slnx -c Release --no-build
+        run: dotnet test --solution WindowsAxon.slnx -c Release --no-build

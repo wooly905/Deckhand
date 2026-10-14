@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+    <InternalsVisibleTo Include="WindowsAxon.Agent.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAxon.Agent\WindowsAxon.Agent.csproj" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="System.Management" />
+    <PackageReference Include="NAudio" />
+  </ItemGroup>
+</Project>

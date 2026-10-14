@@ -1,0 +1,439 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Automation;
+using WindowsAxon.Agent.Approval;
+using WindowsAxon.Agent.Tools;
+using Microsoft.Extensions.AI;
+using AutomationCondition = System.Windows.Automation.Condition;
+
+namespace WindowsAxon.Windows;
+
+public sealed class PaintTools(DesktopUiTools ui) : IApprovalRule
+{
+    public bool AppliesTo(string toolName) => toolName is "paint_new_canvas" or "paint_draw_shape" or "paint_draw_free" or "paint_add_text" or "paint_save";
+
+    public ApprovalDecision Decide(FunctionCallContent call) => new(ApprovalOutcome.Ask,
+                                                                    false,
+                                                                    "Paint changes require approval for each action. Check the selected image before allowing.");
+
+    private AutomationElement Paint(string windowId)
+    {
+        var root = ui.Root(windowId);
+        using var process = Process.GetProcessById(root.Current.ProcessId);
+        if (!process.ProcessName.Equals("mspaint", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Select a Paint window from ui_list_windows.");
+        }
+
+        return root;
+    }
+
+    private static AutomationElement Control(AutomationElement root,
+                                             string name,
+                                             string? automationId = null,
+                                             ControlType? type = null)
+    {
+        AutomationCondition condition = new PropertyCondition(AutomationElement.NameProperty, name);
+        if (automationId is not null)
+        {
+            condition = new OrCondition(new PropertyCondition(AutomationElement.AutomationIdProperty, automationId),
+                                        condition);
+        }
+
+        AutomationCondition typeCondition = type is null
+            ? AutomationCondition.TrueCondition
+            : new PropertyCondition(AutomationElement.ControlTypeProperty, type);
+        var filter = type is null ? condition : new AndCondition(condition, typeCondition);
+        return root.FindFirst(TreeScope.Descendants, filter)
+            ?? root.FindAll(TreeScope.Descendants, typeCondition)
+            .Cast<AutomationElement>()
+            .FirstOrDefault(element => element.Current.Name.TrimEnd(':')
+                .Equals(name.TrimEnd(':'),
+                    StringComparison.OrdinalIgnoreCase)
+                || element.Current.Name.StartsWith(name.TrimEnd(':') + ":", StringComparison.OrdinalIgnoreCase))
+            ?? throw new NotSupportedException($"Paint control '{name}' is not available in '{root.Current.Name}'. Available editable controls: {string.Join(", ", root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))
+            .Cast<AutomationElement>()
+            .Select(element => element.Current.Name + " [" + element.Current.AutomationId + "]"))}.");
+    }
+
+    private static void Activate(AutomationElement element)
+    {
+        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out var invoke))
+        {
+            ((InvokePattern)invoke).Invoke();
+        }
+        else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+        {
+            ((SelectionItemPattern)selection).Select();
+        }
+        else if (element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle))
+        {
+            ((TogglePattern)toggle).Toggle();
+        }
+        else
+        {
+            throw new NotSupportedException("Paint control does not expose an activation pattern.");
+        }
+    }
+
+    private static Rect Canvas(AutomationElement root)
+    {
+        var canvas = Control(root, "Canvas", "image").Current.BoundingRectangle;
+        var window = root.Current.BoundingRectangle;
+        if (canvas.IsEmpty || canvas.Width <= 0 || canvas.Height <= 0 || !window.Contains(canvas))
+        {
+            throw new InvalidOperationException("The whole Paint canvas must be visible. Use Fit to window before drawing.");
+        }
+
+        return canvas;
+    }
+
+    private static void Style(AutomationElement root, string? color, int? size)
+    {
+        if (color is not null)
+        {
+            Activate(Control(root, color, type: ControlType.ListItem));
+        }
+
+        if (size is not null)
+        {
+            if (size is < 1 or > 100)
+            {
+                throw new ArgumentException("Brush size must be 1-100.");
+            }
+
+            var slider = Control(root, "Size", type: ControlType.Slider);
+            if (!slider.TryGetCurrentPattern(RangeValuePattern.Pattern, out var value))
+            {
+                throw new NotSupportedException("Brush size control does not support RangeValuePattern.");
+            }
+
+            var range = (RangeValuePattern)value;
+            if (size < range.Current.Minimum || size > range.Current.Maximum)
+            {
+                throw new ArgumentException("Requested size is outside Paint's supported range.");
+            }
+
+            range.SetValue(size.Value);
+        }
+    }
+
+    private static void WaitForTool(AutomationElement root, string tool)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            if (Control(root, "Canvas", "image").Current.Name.Contains(tool, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            Thread.Sleep(50);
+        }
+        throw new InvalidOperationException($"Paint did not confirm the {tool} tool is active.");
+    }
+
+    [WindowsTool("paint_new_canvas", "desktop_ui", RiskLevel.Change)]
+    [Description("Create a new Paint image in a selected window. Preserves any unsaved-image prompt. Optional width and height use Paint's image Properties dialog. Requires English Paint controls when automation IDs are absent.")]
+    public Task<string> New(string windowId,
+                            int? width = null,
+                            int? height = null,
+                            CancellationToken cancellationToken = default)
+    {
+        return StaThread.Run(() =>
+        {
+            if (width is < 1 or > 10000 || height is < 1 or > 10000)
+            {
+                throw new ArgumentException("Dimensions must be 1-10000.");
+            }
+
+            var root = Paint(windowId);
+            ui.Input(windowId,
+                     cancellationToken,
+                     input => input.Shortcut("Ctrl+N",
+                                             cancellationToken));
+            Thread.Sleep(300);
+            if (root.FindAll(TreeScope.Descendants,
+                             new PropertyCondition(AutomationElement.ControlTypeProperty,
+                                                   ControlType.Window))
+                .Cast<AutomationElement>()
+                .Any(window => window.Current.Name.Contains("save your work",
+                                                            StringComparison.OrdinalIgnoreCase)
+                    || window.Current.Name.Contains("save changes",
+                                                    StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException("Paint is waiting for a save prompt. The image has not been replaced. Respond in Paint before continuing.");
+            }
+
+            if (width is not null || height is not null)
+            {
+                ui.Input(windowId,
+                         cancellationToken,
+                         input => input.Shortcut("Ctrl+E",
+                                                 cancellationToken));
+                Thread.Sleep(300);
+                var dialog = root;
+                if (width is not null)
+                {
+                    ((ValuePattern)Control(dialog,
+                                           "Width",
+                                           "WidthTextBox",
+                                           ControlType.Edit)
+                        .GetCurrentPattern(ValuePattern.Pattern)).SetValue(width.ToString()!);
+                }
+
+                if (height is not null)
+                {
+                    ((ValuePattern)Control(dialog,
+                                           "Height",
+                                           "HeightTextBox",
+                                           ControlType.Edit)
+                        .GetCurrentPattern(ValuePattern.Pattern)).SetValue(height.ToString()!);
+                }
+
+                Activate(Control(dialog, "OK", type: ControlType.Button));
+            }
+            Control(root, "Canvas", "image");
+            return "New-image shortcut sent and canvas found. Check Paint for any save prompt before continuing.";
+        });
+    }
+
+    [WindowsTool("paint_draw_shape", "desktop_ui", RiskLevel.Change)]
+    [Description("Draw line, rectangle, oval, circle, triangle, or arrow on a fully visible Paint canvas. Points use 0-1000 coordinates. Optional English palette color and brush size. Ctrl+Alt+Q stops input.")]
+    public Task<string> Shape(string windowId,
+                              string shape,
+                              double startX,
+                              double startY,
+                              double endX,
+                              double endY,
+                              string? color = null,
+                              int? size = null,
+                              CancellationToken cancellationToken = default)
+    {
+        return StaThread.Run(() =>
+        {
+            var name = shape switch
+            {
+                "line" => "Line",
+                "rectangle" => "Rectangle",
+                "oval" or "circle" => "Oval",
+                "triangle" => "Triangle",
+                "arrow" => "Right arrow",
+                _ => throw new ArgumentException("Unsupported shape.")
+            };
+            var root = Paint(windowId);
+            Activate(Control(root, name, type: ControlType.Button));
+            Style(root, color, size);
+            Thread.Sleep(100);
+            var canvas = Canvas(root);
+            ui.Input(windowId,
+                     cancellationToken,
+                     input =>
+                     {
+                         if (shape == "circle")
+                         {
+                             input.Key(0x10, false, cancellationToken);
+                         }
+
+                         try
+                         {
+                             input.Drag(canvas, [new(startX, startY), new(endX, endY)], cancellationToken);
+                         }
+                         finally
+                         {
+                             if (shape == "circle")
+                             {
+                                 input.Key(0x10, true, CancellationToken.None);
+                             }
+                         }
+                     });
+            return "Shape input sent to Paint. The rendered pixels have not been verified.";
+        });
+    }
+
+    [WindowsTool("paint_draw_free", "desktop_ui", RiskLevel.Change)]
+    [Description("Draw a freehand path with Paint's pencil. points is an array of [x,y] pairs on a 0-1000 canvas scale. Optional English palette color and size.")]
+    public Task<string> Free(string windowId,
+                             double[][] points,
+                             string? color = null,
+                             int? size = null,
+                             CancellationToken cancellationToken = default)
+    {
+        return StaThread.Run(() =>
+        {
+            if (points.Length is < 2 or > 500 || points.Any(point => point.Length != 2))
+            {
+                throw new ArgumentException("Use 2-500 [x,y] pairs.");
+            }
+
+            var root = Paint(windowId);
+            Activate(Control(root, "Pencil", "PencilTool", ControlType.Button));
+            Style(root, color, size);
+            WaitForTool(root, "Pencil");
+            var canvas = Canvas(root);
+            ui.Input(windowId,
+                     cancellationToken,
+                     input => input.Drag(canvas,
+                                         points.Select(point => new Point(point[0],
+                                                                          point[1])).ToArray(),
+                                         cancellationToken));
+            return "Freehand input sent to Paint. The rendered pixels have not been verified.";
+        });
+    }
+
+    [WindowsTool("paint_add_text", "desktop_ui", RiskLevel.Change)]
+    [Description("Add text in a Paint text box at a 0-1000 canvas position. The whole canvas must be visible.")]
+    public Task<string> Text(string windowId,
+                             string text,
+                             double x,
+                             double y,
+                             CancellationToken cancellationToken = default)
+    {
+        return StaThread.Run(() =>
+        {
+            var root = Paint(windowId);
+            Activate(Control(root, "Text", type: ControlType.Button));
+            WaitForTool(root, "Text");
+            var canvas = Canvas(root);
+            ui.Input(windowId,
+                     cancellationToken,
+                     input =>
+                     {
+                         input.Drag(canvas,
+                                    [new(x, y), new(Math.Min(x + 300, 1000), Math.Min(y + 100, 1000))],
+                                    cancellationToken);
+                         Thread.Sleep(150);
+                         input.Text(text, cancellationToken);
+                     });
+            return "Text input sent to Paint. The rendered text has not been verified.";
+        });
+    }
+
+    [WindowsTool("paint_save", "desktop_ui", RiskLevel.Change)]
+    [Description("Save a Paint image to a new absolute file path. Refuses overwriting an existing file. Uses Paint's Save As dialog and verifies that the resulting file exists.")]
+    public Task<string> Save(string windowId, string path, CancellationToken cancellationToken)
+    {
+        return StaThread.Run(() =>
+        {
+            path = Path.GetFullPath(path);
+            if (File.Exists(path))
+            {
+                throw new ArgumentException("Choose a new file path; overwriting is not supported.");
+            }
+
+            if (!Directory.Exists(Path.GetDirectoryName(path)))
+            {
+                throw new ArgumentException("Destination folder does not exist.");
+            }
+
+            var format = Path.GetExtension(path)
+                .ToLowerInvariant() switch
+            {
+                ".png" => "PNG",
+                ".jpg" or ".jpeg" => "JPEG",
+                ".bmp" => "24-bit Bitmap",
+                ".gif" => "GIF",
+                ".tif" or ".tiff" => "TIFF",
+                _ => throw new ArgumentException("Use png, jpg, jpeg, bmp, gif, tif, or tiff."),
+            };
+            var root = Paint(windowId);
+            Activate(Control(root,
+                             "Pencil",
+                             "PencilTool",
+                             ControlType.Button));
+            ui.Input(windowId,
+                     cancellationToken,
+                     input => input.Shortcut("Ctrl+Shift+S",
+                                             cancellationToken));
+            Thread.Sleep(500);
+            var dialog = root.FindAll(TreeScope.Descendants,
+                                      new PropertyCondition(AutomationElement.ControlTypeProperty,
+                                                            ControlType.Window))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(window => window.FindFirst(TreeScope.Descendants,
+                                                           new PropertyCondition(AutomationElement.AutomationIdProperty,
+                                                                                 "FileTypeControlHost")) is not null)
+                ?? throw new InvalidOperationException("Save As dialog not found. Check Paint for a prompt.");
+            var combo = Control(dialog,
+                                "Save as type:",
+                                "FileTypeControlHost",
+                                ControlType.ComboBox);
+            var option = combo.FindAll(TreeScope.Descendants,
+                                       new PropertyCondition(AutomationElement.ControlTypeProperty,
+                                                             ControlType.ListItem))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(element => element.Current.Name.StartsWith(format + " ",
+                                                                           StringComparison.OrdinalIgnoreCase))
+                ?? throw new NotSupportedException("Paint does not offer the requested file format.");
+            ((SelectionItemPattern)option.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            Thread.Sleep(300);
+            var fileName = Control(dialog,
+                                   "File name:",
+                                   "1001",
+                                   ControlType.Edit);
+            var fileNameValue = (ValuePattern)fileName.GetCurrentPattern(ValuePattern.Pattern);
+            ui.DialogInput(windowId,
+                           dialog,
+                           cancellationToken,
+                           input =>
+                           {
+                               fileName.SetFocus();
+                               input.Shortcut("Ctrl+A",
+                                              cancellationToken);
+                               input.Text(path,
+                                          cancellationToken);
+                           });
+            Thread.Sleep(200);
+            if (!fileNameValue.Current.Value.Equals(path,
+                                                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Paint did not retain the requested output path.");
+            }
+
+            Activate(Control(dialog,
+                             "Save",
+                             "1",
+                             ControlType.Button));
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (File.Exists(path)
+                    && new FileInfo(path).Length > 0)
+                {
+                    if (!SignatureMatches(path))
+                    {
+                        throw new InvalidOperationException("The saved image format does not match its extension.");
+                    }
+
+                    return $"Saved image file and format verified: {path}.";
+                }
+
+                Thread.Sleep(100);
+            }
+            throw new InvalidOperationException("The saved file was not verified. Check Paint for a prompt.");
+        });
+    }
+
+    internal static bool SignatureMatches(string path)
+    {
+        using var stream = File.OpenRead(path);
+        Span<byte> header = stackalloc byte[8];
+        var count = stream.Read(header);
+        header = header[..count];
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".png" => header.StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }),
+            ".jpg" or ".jpeg" => header.StartsWith(new byte[] { 255, 216 }),
+            ".bmp" => header.StartsWith("BM"u8),
+            ".gif" => header.StartsWith("GIF8"u8),
+            ".tif" or ".tiff" => header.StartsWith(new byte[] { 73, 73, 42, 0 })
+            || header.StartsWith(new byte[] {
+    77,
+    77,
+    0,
+    42
+}),
+            _ => false,
+        };
+    }
+}
