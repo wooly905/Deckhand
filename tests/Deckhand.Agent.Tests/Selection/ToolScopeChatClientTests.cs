@@ -169,8 +169,8 @@ public class ToolScopeChatClientTests
     public async Task At_the_limit_the_user_can_extend_one_time()
     {
         var h = new Harness();
-        h.Prompter.AskToContinueAsync(10, Arg.Any<CancellationToken>()).Returns(true);
-        for (var i = 0; i < 10; i++)
+        h.Prompter.AskToContinueAsync(ToolSelectionState.BaseLimit, Arg.Any<CancellationToken>()).Returns(true);
+        for (var i = 0; i < ToolSelectionState.BaseLimit; i++)
         {
             h.State.CountStep();
         }
@@ -187,7 +187,7 @@ public class ToolScopeChatClientTests
     {
         var h = new Harness();
         h.Prompter.AskToContinueAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(false);
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < ToolSelectionState.BaseLimit; i++)
         {
             h.State.CountStep();
         }
@@ -204,7 +204,7 @@ public class ToolScopeChatClientTests
     {
         var h = new Harness();
         h.State.Extend();
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < ToolSelectionState.BaseLimit + ToolSelectionState.ExtensionSteps; i++)
         {
             h.State.CountStep();
         }

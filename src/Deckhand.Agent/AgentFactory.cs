@@ -36,7 +36,7 @@ public sealed class AgentFactory(AgentDependencies dependencies)
         var builder = d.Model.AsBuilder()
             .UseFunctionInvocation(configure: f =>
             {
-                f.MaximumIterationsPerRequest = 35; // backstop; ToolScopeChatClient owns the step limit
+                f.MaximumIterationsPerRequest = 60; // backstop; ToolScopeChatClient owns the step limit
                 f.MaximumConsecutiveErrorsPerRequest = 2;
                 f.IncludeDetailedErrors = true;
                 // Catalog tools log inside their guard, before results are trimmed. Include provider tools too.

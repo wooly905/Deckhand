@@ -68,16 +68,16 @@ public class ToolSelectionStateTests
     }
 
     [Fact]
-    public void Step_limit_is_10_and_sticky_25_after_app_control()
+    public void Step_limit_is_50_and_stays_50_after_app_control()
     {
         var state = new ToolSelectionState(Catalog(), 14);
-        Assert.Equal(10, state.StepLimit);
+        Assert.Equal(50, state.StepLimit);
 
         state.Activate("group:browser", Tools("browser", 11));
         state.Activate("group:files", Tools("fs", 9)); // removes browser
 
         Assert.DoesNotContain("group:browser", state.ActiveKeys);
-        Assert.Equal(25, state.StepLimit);
+        Assert.Equal(50, state.StepLimit);
     }
 
     [Fact]
@@ -89,12 +89,12 @@ public class ToolSelectionStateTests
 
         var bySkill = new ToolSelectionState(catalog, 14);
         bySkill.Activate("skill:open-website", ["browser_open"]);
-        Assert.Equal(25, bySkill.StepLimit);
+        Assert.Equal(50, bySkill.StepLimit);
 
         var byCall = new ToolSelectionState(catalog, 14) { AllToolsActive = true };
         Assert.True(byCall.IsActive("ui_click"));
         byCall.MarkUsed("ui_click");
-        Assert.Equal(25, byCall.StepLimit);
+        Assert.Equal(50, byCall.StepLimit);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class ToolSelectionStateTests
 
         state.Extend();
 
-        Assert.Equal(20, state.StepLimit);
+        Assert.Equal(60, state.StepLimit);
         Assert.True(state.ExtensionUsed);
         Assert.Throws<InvalidOperationException>(state.Extend);
     }
@@ -123,7 +123,7 @@ public class ToolSelectionStateTests
 
         Assert.Empty(state.ActiveKeys);
         Assert.Equal(0, state.StepCount);
-        Assert.Equal(10, state.StepLimit);
+        Assert.Equal(50, state.StepLimit);
         Assert.False(state.ExtensionUsed);
         Assert.False(state.MustFinish);
         Assert.False(state.AwaitingReply);

@@ -5,8 +5,8 @@ namespace Deckhand.Agent.Selection;
 /// <summary>Active skills and groups, and the step counter, for the current request of one session.</summary>
 public sealed class ToolSelectionState(ToolCatalog catalog, int maxActiveTools)
 {
-    public const int BaseLimit = 10;
-    public const int AppControlLimit = 25;
+    public const int BaseLimit = 50;
+    public const int AppControlLimit = 50;
     public const int ExtensionSteps = 10;
 
     private readonly Dictionary<string, (IReadOnlyList<string> Tools, long LastUsed)> _active = [];
