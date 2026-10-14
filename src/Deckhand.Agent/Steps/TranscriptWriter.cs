@@ -30,8 +30,14 @@ public sealed class TranscriptWriter(int contextWindow)
         string s => s,
         JsonElement { ValueKind: JsonValueKind.String } e => e.GetString() ?? "",
         JsonElement e => e.GetRawText(),
+        IEnumerable<AIContent> contents => string.Join("\n", contents.OfType<TextContent>().Select(t => t.Text)),
         _ => JsonSerializer.Serialize(result),
     };
+
+    public static IReadOnlyList<DataContent> Images(object? result) =>
+        result is IEnumerable<AIContent> contents
+        ? contents.OfType<DataContent>().Where(d => d.HasTopLevelMediaType("image")).ToList()
+        : [];
 
     public List<ChatMessage> Write(IEnumerable<ChatMessage> history,
                                    string? instructions,
@@ -108,6 +114,9 @@ public sealed class TranscriptWriter(int contextWindow)
     {
         var toolNames = new Dictionary<string, string>();
         var result = new List<ChatMessage>();
+        // Only the newest image is sent; older ones keep their text description.
+        var lastImage = current.SelectMany(m => m.Contents.OfType<FunctionResultContent>())
+            .LastOrDefault(r => Images(r.Result).Count > 0);
         foreach (var message in current)
         {
             if (message.Role == ChatRole.Assistant)
@@ -135,7 +144,10 @@ public sealed class TranscriptWriter(int contextWindow)
                 foreach (var functionResult in message.Contents.OfType<FunctionResultContent>())
                 {
                     var name = toolNames.GetValueOrDefault(functionResult.CallId, "unknown");
-                    result.Add(new ChatMessage(ChatRole.User, Observation(name, ObservationText(functionResult.Result))));
+                    var observation = Observation(name, ObservationText(functionResult.Result));
+                    result.Add(functionResult == lastImage
+                        ? new ChatMessage(ChatRole.User, [new TextContent(observation), .. Images(functionResult.Result)])
+                        : new ChatMessage(ChatRole.User, observation));
                 }
             }
             else if (message.Role == ChatRole.User && !string.IsNullOrWhiteSpace(message.Text))

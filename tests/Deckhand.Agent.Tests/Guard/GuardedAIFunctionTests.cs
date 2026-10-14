@@ -287,4 +287,29 @@ public class GuardedAIFunctionTests
         var last = response.Messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Last();
         Assert.Equal("Stopped: the same action was repeated 3 times.", last.Result?.ToString());
     }
+
+    [Fact]
+    public async Task Image_result_keeps_the_image_and_audits_only_the_text()
+    {
+        var catalog = new ToolCatalog();
+        catalog.Add(AIFunctionFactory.Create(() => Task.FromResult<IEnumerable<AIContent>>(
+                [new TextContent("Screenshot of Paint."), new DataContent(new byte[] { 1, 2, 3 }, "image/png")]),
+                                             "ui_screenshot"),
+                    "desktop_ui",
+                    RiskLevel.Read);
+        var state = new ToolSelectionState(catalog, 14);
+        state.Activate("group:desktop_ui", ["ui_screenshot"]);
+        var audit = new ListAuditLog();
+        var guard = new GuardedAIFunction(catalog.Find("ui_screenshot")!,
+                                          state,
+                                          new CallTracker(),
+                                          new ApprovalLedger(),
+                                          audit);
+
+        var result = Assert.IsAssignableFrom<IEnumerable<AIContent>>(await guard.InvokeAsync(new AIFunctionArguments(), Ct));
+
+        Assert.Equal("Screenshot of Paint.", Assert.Single(result.OfType<TextContent>()).Text);
+        Assert.Equal("image/png", Assert.Single(result.OfType<DataContent>()).MediaType);
+        Assert.Equal("Screenshot of Paint.", Assert.Single(audit.Entries, e => e.Kind == "call").Result);
+    }
 }

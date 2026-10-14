@@ -71,13 +71,14 @@ public sealed class GuardedAIFunction(ToolEntry entry,
         }
 
         state.MarkUsed(entry.Name);
+        object? result;
         string text;
         bool success;
         string status;
         Exception? error;
         try
         {
-            (text, success, status, error) = await RunAsync(arguments, cancellationToken);
+            (result, text, success, status, error) = await RunAsync(arguments, cancellationToken);
         }
         catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
@@ -98,10 +99,13 @@ public sealed class GuardedAIFunction(ToolEntry entry,
             var message = CardNumberMasker.Mask(error.Message);
             observation = "Error: " + (message.Length > MaxErrorChars ? message[..MaxErrorChars] : message);
         }
-        return success && entry.Name == "browser_read" ? observation : Cut(observation);
+        observation = success && entry.Name == "browser_read" ? observation : Cut(observation);
+        var images = TranscriptWriter.Images(result);
+        return images.Count > 0 ? new List<AIContent>([new TextContent(observation), .. images]) : observation;
     }
 
-    private async Task<(string Text,
+    private async Task<(object? Result,
+                        string Text,
                         bool Success,
                         string Status,
                         Exception? Error)> RunAsync(AIFunctionArguments arguments,
@@ -112,15 +116,15 @@ public sealed class GuardedAIFunction(ToolEntry entry,
         try
         {
             var result = await base.InvokeCoreAsync(arguments, timeout.Token);
-            return (TranscriptWriter.ObservationText(result), true, "succeeded", null);
+            return (result, TranscriptWriter.ObservationText(result), true, "succeeded", null);
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            return ($"Error: the tool did not finish in {(int)entry.Timeout.TotalSeconds} seconds.", false, "timed_out", ex);
+            return (null, $"Error: the tool did not finish in {(int)entry.Timeout.TotalSeconds} seconds.", false, "timed_out", ex);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return ("Error: " + ex.Message, false, "failed", ex);
+            return (null, "Error: " + ex.Message, false, "failed", ex);
         }
     }
 

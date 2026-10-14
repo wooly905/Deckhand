@@ -236,6 +236,8 @@ public sealed class WindowsToolsTests : IAsyncDisposable
     [InlineData("browser_find", true)]
     [InlineData("ui_snapshot", false)]
     [InlineData("ui_snapshot", true)]
+    [InlineData("ui_screenshot", false)]
+    [InlineData("ui_screenshot", true)]
     public void Snapshots_use_the_sensitive_read_approval_gate(string name, bool remote)
     {
         var catalog = new ToolCatalog();
@@ -266,6 +268,24 @@ public sealed class WindowsToolsTests : IAsyncDisposable
             policy.AllowForConversation(name);
             Assert.Equal(ApprovalOutcome.AutoApprove, policy.Decide(call).Outcome);
         }
+    }
+
+    [Fact]
+    public void Screenshot_is_scaled_to_the_maximum_side()
+    {
+        var source = System.Windows.Media.Imaging.BitmapSource.Create(2560,
+                                                                      1440,
+                                                                      96,
+                                                                      96,
+                                                                      System.Windows.Media.PixelFormats.Bgra32,
+                                                                      null,
+                                                                      new byte[2560 * 1440 * 4],
+                                                                      2560 * 4);
+
+        var image = ScreenshotTools.Encode(source);
+
+        Assert.Equal((1280, 720), (image.Width, image.Height));
+        Assert.Equal([0x89, 0x50, 0x4E, 0x47], image.Png[..4]);
     }
 
     [Fact]

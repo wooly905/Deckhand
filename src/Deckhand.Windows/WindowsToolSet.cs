@@ -43,6 +43,7 @@ public sealed class WindowsToolSet : IDisposable
             utilities,
             _browser,
             ui,
+            new ScreenshotTools(ui),
             paint,
             scripts,
             _docs

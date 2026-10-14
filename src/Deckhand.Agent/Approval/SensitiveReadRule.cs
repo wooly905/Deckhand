@@ -11,7 +11,8 @@ public sealed class SensitiveReadRule(bool endpointIsRemote, string endpointHost
         "ui_read_text",
         "browser_snapshot",
         "browser_find",
-        "ui_snapshot"
+        "ui_snapshot",
+        "ui_screenshot"
 ];
 
     public bool AppliesTo(string toolName) => Tools.Contains(toolName);

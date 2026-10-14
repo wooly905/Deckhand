@@ -67,6 +67,28 @@ new TextReasoningContent(thought),
     }
 
     [Fact]
+    public void Only_the_newest_image_observation_keeps_its_image()
+    {
+        static ChatMessage Image(string id, string text) =>
+            new(ChatRole.Tool,
+                [new FunctionResultContent(id,
+                                           new List<AIContent> { new TextContent(text), new DataContent(new byte[] { 1 }, "image/png") })]);
+        var history = new List<ChatMessage>
+        {
+            TranscriptWriter.NewRequest("look"),
+            Call("c1", "ui_screenshot", "t"), Image("c1", "first"),
+            Call("c2", "ui_screenshot", "t"), Image("c2", "second"),
+        };
+
+        var messages = new TranscriptWriter(16384).Write(history, "RULES", []);
+
+        Assert.Equal("<observation tool=\"ui_screenshot\">first</observation>", messages[3].Text);
+        Assert.Empty(messages[3].Contents.OfType<DataContent>());
+        Assert.Equal("<observation tool=\"ui_screenshot\">second</observation>", messages[5].Text);
+        Assert.Single(messages[5].Contents.OfType<DataContent>());
+    }
+
+    [Fact]
     public void Ask_user_text_keeps_its_action()
     {
         var question = new ChatMessage(ChatRole.Assistant, "Which one?") { AdditionalProperties = new() { [TranscriptWriter.ActionKey] = "ask_user" } };

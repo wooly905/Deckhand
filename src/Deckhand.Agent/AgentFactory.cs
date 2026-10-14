@@ -54,7 +54,7 @@ public sealed class AgentFactory(AgentDependencies dependencies)
         }
         else
         {
-            builder.Use(inner => new NativeFallbackChatClient(inner,
+            builder.Use(inner => new NativeFallbackChatClient(new ToolImageChatClient(inner),
                                                                new ReActStepChatClient(inner,
                                                                                        d.Chat.ArgsSchema,
                                                                                        new TranscriptWriter(d.Chat.ContextWindow),
@@ -62,6 +62,8 @@ public sealed class AgentFactory(AgentDependencies dependencies)
                                                                Prompts.System(d.DocsAvailable, StepMode.Structured),
                                                                response => LogNativeFallback(d.Audit, ledger, response)));
         }
+
+        builder.Use(inner => new ImageFallbackChatClient(inner, error => LogImageFallback(d.Audit, ledger, error)));
 
         var tools = d.Catalog.BuildAgentTools(entry => new GuardedAIFunction(entry, selection, calls, ledger, d.Audit))
             .ToList();
@@ -106,6 +108,18 @@ public sealed class AgentFactory(AgentDependencies dependencies)
             Tools = tools,
         };
     }
+
+    private static void LogImageFallback(IAuditLog audit, ApprovalLedger ledger, Exception error) =>
+        audit.Write(new AuditEntry(DateTimeOffset.Now,
+                                   "model_fallback",
+                                   ledger.CurrentRequest,
+                                   "",
+                                   "{}",
+                                   "None",
+                                   null,
+                                   null,
+                                   Status: "no_images",
+                                   Error: error.ToString()));
 
     private static void LogNativeFallback(IAuditLog audit, ApprovalLedger ledger, ChatResponse response)
     {

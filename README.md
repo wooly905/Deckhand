@@ -2,7 +2,7 @@
 
 Deckhand is a Windows 11 x64 application that accepts plain-text requests and runs them through an agent. The desktop interface uses WinUI 3 and CommunityToolkit.Mvvm.
 
-The desktop app uses a real model endpoint and 86 operational tools for Windows, files, registry, printers, event logs, personalization, devices, network, applications, utilities, browser automation, desktop controls, Paint, scripts, and Microsoft Learn. Tools are enabled by group as needed. The desktop app does not use evaluation fake tools.
+The desktop app uses a real model endpoint and 87 operational tools for Windows, files, registry, printers, event logs, personalization, devices, network, applications, utilities, browser automation, desktop controls, Paint, scripts, and Microsoft Learn. Tools are enabled by group as needed. The desktop app does not use evaluation fake tools.
 
 Applications are indexed from Windows AppsFolder. Packaged apps such as Paint are activated through Windows, and a visible process window is verified before reporting that the app opened. For other app types, the tool reports a launch request without claiming its window was verified. Closing a window uses the application's normal close flow, preserves save prompts, and reports success only after verifying that the window closed. Launching with files or command-line arguments is not supported.
 
@@ -68,14 +68,14 @@ Get-Content "$env:LOCALAPPDATA\Deckhand\logs\audit-$(Get-Date -Format yyyyMMdd).
 
 ## Tool catalog
 
-The operational catalog has 86 tools. `load_skill`, `read_skill_resource`, and `enable_tools` provide skill and group selection.
+The operational catalog has 87 tools. `load_skill`, `read_skill_resource`, and `enable_tools` provide skill and group selection.
 
 | Group | Tools |
 |---|---|
 | apps | `app_list`, `winget_search`, `winget_install` |
 | base | `app_find`, `app_launch`, `app_refresh_index`, `ui_list_windows`, `ui_close_window`, `docs_search` |
 | browser | `browser_open`, `browser_snapshot`, `browser_find`, `browser_read`, `browser_click`, `browser_type`, `browser_press`, `browser_scroll`, `browser_back`, `browser_tabs`, `browser_tab_select`, `browser_close` |
-| desktop_ui | `ui_focus_window`, `ui_snapshot`, `ui_click`, `ui_type`, `ui_press_keys`, `ui_drag`, `ui_read_text`, `paint_new_canvas`, `paint_draw_shape`, `paint_draw_free`, `paint_add_text`, `paint_save` |
+| desktop_ui | `ui_focus_window`, `ui_snapshot`, `ui_click`, `ui_type`, `ui_press_keys`, `ui_drag`, `ui_read_text`, `paint_new_canvas`, `paint_draw_shape`, `paint_draw_free`, `paint_add_text`, `paint_save`, `ui_screenshot` |
 | devices | `volume_get`, `volume_set`, `brightness_set`, `power_plan_list`, `power_plan_set` |
 | docs | `docs_fetch` |
 | eventlog | `eventlog_list_logs`, `eventlog_query` |
@@ -96,6 +96,7 @@ The operational catalog has 86 tools. `load_skill`, `read_skill_resource`, and `
 - Registry, permission, wallpaper, theme, audio, brightness, power-plan, and default-printer changes can be restored with `undo_list` and `undo_last`. The journal keeps seven days of entries and detects subsequent changes. Scripts, installs, file moves, and deletion have no automatic undo.
 - Browser tools independently launch installed Microsoft Edge or Google Chrome and connect through Playwright's Chrome DevTools Protocol support, with a separate visible profile under `%LOCALAPPDATA%\Deckhand\browser-profile`. They do not control the user's regular browser profile. Stop, a new conversation, and closing Deckhand disconnect automation while preserving browser windows and tabs. Later browser requests reconnect to the same profile. `browser_close` explicitly closes the selected tab. Sign-in, CAPTCHA, and protected input require the user.
 - `browser_read` returns the full visible page text, or the full visible text of a referenced element, to the model and audit log. It excludes HTML markup, scripts, styles, templates, comments, and hidden content while preserving text line breaks. It bypasses the usual 1,500-character observation limit so content after the navigation and page header remains available. Scrolling does not change the starting point of a full-page read.
+- `ui_screenshot` captures one window as a PNG, scaled to at most 1,280 pixels on the longer side, and sends it to the model as an image. The model must accept images; if the endpoint rejects a request containing an image, Deckhand resends it once without the image and tells the model to use `ui_snapshot` or `ui_read_text`. When that retry succeeds, images are no longer sent for the rest of the conversation, and a `kind: "model_fallback"`, `status: "no_images"` audit entry is written. Protected windows are blocked as with other desktop tools, minimized windows are refused, and a remote endpoint requires approval. Only the newest screenshot is sent with each model call; the audit log records the text description, not the image.
 - Paint tools create canvases, draw shapes and freehand paths, add text, and save images through Paint's interface. Drawing requires the entire canvas to be visible. The adapter currently uses English control names where stable automation IDs are unavailable; other versions or languages may return an unsupported-control error. Saved files are checked for existence and image format.
 - PowerShell and Python scripts are generated in `%LOCALAPPDATA%\Deckhand\work\<session>`, checked for syntax, and shown in full before execution. Modified scripts are refused. Execution uses the current user's permissions, a 120-second timeout, a 1 GB Windows Job Object limit, and output capture capped at 1 MB per stream. This is process isolation, not a sandbox restricting file or network access. Review the code before allowing it. Administratively configured PowerShell execution policies prevent PowerShell tools from running.
 - `python_ensure` creates Deckhand's virtual environment and may install Python through winget after approval. `python_install_package` installs only into that environment. `winget_install` requests a current-user install; packages without that installation scope return an error.
