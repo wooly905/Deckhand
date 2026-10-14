@@ -27,12 +27,12 @@ public sealed class SystemTools
     }
 
     [WindowsTool("system_get_info", "system")]
-    [Description("Read Windows version, CPU, RAM, uptime, and computer model.")]
+    [Description("Read computer name, domain or workgroup, signed-in user, Windows version, CPU, RAM, uptime, and computer model.")]
     public object Info() => new
     {
         OS = Query("SELECT Caption,Version,LastBootUpTime,TotalVisibleMemorySize FROM Win32_OperatingSystem"),
         CPU = Query("SELECT Name,NumberOfCores,NumberOfLogicalProcessors FROM Win32_Processor"),
-        Computer = Query("SELECT Manufacturer,Model FROM Win32_ComputerSystem")
+        Computer = Query("SELECT Name,Domain,PartOfDomain,Workgroup,UserName,Manufacturer,Model FROM Win32_ComputerSystem")
     };
 
     [WindowsTool("system_get_performance", "system")]
@@ -225,9 +225,10 @@ public sealed class SystemTools
             throw new ArgumentException("after must precede before.");
         }
 
-        var query = conditions.Count == 0 ? "*" : "*[System[" + string.Join(" and ", conditions) + "]]";
-        using var reader = new EventLogReader(new EventLogQuery(logName, PathType.LogName, query) { ReverseDirection = true });
-        var events = new List<object>();
+        string query = conditions.Count == 0 ? "*" : "*[System[" + string.Join(" and ", conditions) + "]]";
+        using EventLogReader reader = new(new EventLogQuery(logName, PathType.LogName, query) { ReverseDirection = true });
+        List<object> events = new();
+
         for (var scanned = 0; scanned < 1000 && events.Count < 50; scanned++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -271,6 +272,7 @@ public sealed class SystemTools
         using var search = new ManagementObjectSearcher("SELECT * FROM Win32_PrintJob");
         using var jobs = search.Get();
         var count = 0;
+
         foreach (ManagementObject job in jobs)
         {
             using (job)
@@ -283,6 +285,7 @@ public sealed class SystemTools
                 }
 
                 var owner = job["Owner"].ToString()!;
+
                 if (!owner.Equals(Environment.UserName, StringComparison.OrdinalIgnoreCase)
                     && !owner.Equals($"{Environment.UserDomainName}\\{Environment.UserName}",
                                      StringComparison.OrdinalIgnoreCase))
@@ -303,6 +306,7 @@ public sealed class SystemTools
     {
         using var search = new ManagementObjectSearcher("SELECT * FROM Win32_Printer");
         using var printers = search.Get();
+
         foreach (ManagementObject item in printers)
         {
             using (item)

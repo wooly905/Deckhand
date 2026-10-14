@@ -40,6 +40,20 @@
   expect_tools_all: [system_get_info]
   expect_answer_contains: ["16 GB"]
 
+- id: sys-002
+  request: "what's the windows computer name?"
+  expect_group: system
+  expect_tools_all: [system_get_info]
+  forbid_tools: [settings_open]
+  expect_answer_contains: ["DESKTOP-SAM01"]
+
+- id: net-003
+  request: "what is my IP address?"
+  expect_group: network
+  expect_tools_all: [net_get_config]
+  forbid_tools: [settings_open]
+  expect_answer_contains: ["192.168.1.20"]
+
 - id: ask-001
   request: "open it"
   replies: ["paint"]

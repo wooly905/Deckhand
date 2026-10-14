@@ -1,34 +1,219 @@
 [
-  { "name": "app_find", "group": "base", "risk": "Read", "description": "Search the installed apps by name. Returns up to 5 matches with id.",
-    "parameters": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
-    "output": "1. Paint (id: Microsoft.Paint_8wekyb3d8bbwe!App)" },
-  { "name": "app_launch", "group": "base", "risk": "Read", "policyDriven": true, "description": "Start an app by id from app_find, optionally with a file.",
-    "parameters": { "type": "object", "properties": { "id": { "type": "string" }, "file": { "type": "string" } }, "required": ["id"] },
-    "output": "Started." },
-  { "name": "app_refresh_index", "group": "apps", "risk": "Read", "description": "Build the app index again.",
-    "parameters": { "type": "object", "properties": {} }, "output": "Index has 214 apps." },
-  { "name": "system_get_info", "group": "system", "risk": "Read", "description": "OS version, CPU, RAM, uptime, computer model.",
-    "parameters": { "type": "object", "properties": {} }, "output": "Windows 11 Home 24H2, 16 GB RAM, uptime 3 days." },
-  { "name": "net_get_config", "group": "network", "risk": "Read", "description": "Network adapters with IP, gateway, and DNS.",
-    "parameters": { "type": "object", "properties": {} }, "output": "Wi-Fi: 192.168.1.20, gateway 192.168.1.1, DNS 192.168.1.1" },
-  { "name": "net_ping", "group": "network", "risk": "Read", "description": "Ping a host name or IP address.",
-    "parameters": { "type": "object", "properties": { "host": { "type": "string" } }, "required": ["host"] },
-    "output": "4 replies, average 5 ms." },
-  { "name": "net_dns_lookup", "group": "network", "risk": "Read", "description": "Resolve a host name.",
-    "parameters": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
-    "output": "www.microsoft.com -> 23.45.67.89" },
-  { "name": "settings_open", "group": "settings", "risk": "Read", "description": "Open a Settings page by name.",
-    "parameters": { "type": "object", "properties": { "page": { "type": "string" } }, "required": ["page"] },
-    "output": "Opened." },
-  { "name": "fs_find_files", "group": "files", "risk": "Read", "description": "Find files by name pattern under a folder.",
-    "parameters": { "type": "object", "properties": { "root": { "type": "string" }, "pattern": { "type": "string" } }, "required": ["pattern"] },
-    "output": "C:\\Users\\Sam\\Pictures\\beach.jpg" },
-  { "name": "wallpaper_get", "group": "personalize", "risk": "Read", "description": "Current wallpaper path and style.",
-    "parameters": { "type": "object", "properties": {} }, "output": "C:\\Windows\\Web\\Wallpaper\\Windows\\img0.jpg (fill)" },
-  { "name": "wallpaper_set", "group": "personalize", "risk": "Change", "description": "Set the desktop wallpaper to an image file.",
-    "parameters": { "type": "object", "properties": { "path": { "type": "string" }, "style": { "type": "string", "enum": ["fill", "fit", "stretch", "center", "tile"] } }, "required": ["path"] },
-    "output": "Wallpaper changed. Undo is available." },
-  { "name": "theme_set_mode", "group": "personalize", "risk": "Change", "description": "Set light or dark mode for apps, Windows, or both.",
-    "parameters": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["light", "dark"] }, "target": { "type": "string", "enum": ["apps", "windows", "both"] } }, "required": ["mode"] },
-    "output": "Dark mode is on. Undo is available." }
+  {
+    "name": "app_find",
+    "group": "base",
+    "risk": "Read",
+    "description": "Search the installed apps by name. Returns up to 5 matches with id.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "output": "1. Paint (id: Microsoft.Paint_8wekyb3d8bbwe!App)"
+  },
+  {
+    "name": "app_launch",
+    "group": "base",
+    "risk": "Read",
+    "policyDriven": true,
+    "description": "Start an app by id from app_find, optionally with a file.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output": "Started."
+  },
+  {
+    "name": "app_refresh_index",
+    "group": "apps",
+    "risk": "Read",
+    "description": "Build the app index again.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    },
+    "output": "Index has 214 apps."
+  },
+  {
+    "name": "system_get_info",
+    "group": "system",
+    "risk": "Read",
+    "description": "system information, OS version, CPU, RAM, uptime, computer model.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    },
+    "output": "Computer name DESKTOP-SAM01, workgroup WORKGROUP, user DESKTOP-SAM01\\Sam. Windows 11 Home 24H2, 16 GB RAM, uptime 3 days."
+  },
+  {
+    "name": "net_get_config",
+    "group": "network",
+    "risk": "Read",
+    "description": "Network adapters with IP, gateway, and DNS.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    },
+    "output": "Wi-Fi: 192.168.1.20, gateway 192.168.1.1, DNS 192.168.1.1"
+  },
+  {
+    "name": "net_ping",
+    "group": "network",
+    "risk": "Read",
+    "description": "Ping a host name or IP address.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "host"
+      ]
+    },
+    "output": "4 replies, average 5 ms."
+  },
+  {
+    "name": "net_dns_lookup",
+    "group": "network",
+    "risk": "Read",
+    "description": "Resolve a host name.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "output": "www.microsoft.com -> 23.45.67.89"
+  },
+  {
+    "name": "settings_open",
+    "group": "settings",
+    "risk": "Read",
+    "description": "Open a Settings page by name.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "page"
+      ]
+    },
+    "output": "Opened."
+  },
+  {
+    "name": "fs_find_files",
+    "group": "files",
+    "risk": "Read",
+    "description": "Find files by name pattern under a folder.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ]
+    },
+    "output": "C:\\Users\\Sam\\Pictures\\beach.jpg"
+  },
+  {
+    "name": "wallpaper_get",
+    "group": "personalize",
+    "risk": "Read",
+    "description": "Current wallpaper path and style.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    },
+    "output": "C:\\Windows\\Web\\Wallpaper\\Windows\\img0.jpg (fill)"
+  },
+  {
+    "name": "wallpaper_set",
+    "group": "personalize",
+    "risk": "Change",
+    "description": "Set the desktop wallpaper to an image file.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "fill",
+            "fit",
+            "stretch",
+            "center",
+            "tile"
+          ]
+        }
+      },
+      "required": [
+        "path"
+      ]
+    },
+    "output": "Wallpaper changed. Undo is available."
+  },
+  {
+    "name": "theme_set_mode",
+    "group": "personalize",
+    "risk": "Change",
+    "description": "Set light or dark mode for apps, Windows, or both.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "light",
+            "dark"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "apps",
+            "windows",
+            "both"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "output": "Dark mode is on. Undo is available."
+  }
 ]
