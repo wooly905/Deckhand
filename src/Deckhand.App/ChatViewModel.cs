@@ -35,7 +35,7 @@ public partial class ChatViewModel : ObservableObject
     {
         this.service = service;
         Input = "";
-        Status = service.ModelLabel;
+        Status = "";
     }
 
     public ObservableCollection<ChatMessageView> Messages
@@ -44,7 +44,7 @@ public partial class ChatViewModel : ObservableObject
     } =
     [
         new("Deckhand",
-            "Try an English request such as 'show disk usage', 'check my network', 'open Paint', or 'close Paint'. Deckhand offers Windows, file, browser, desktop, Paint, and script tools. Press Ctrl+Enter to send."),
+            "Try an English request such as 'show disk usage', 'check my network', 'open Paint', or 'close Paint'. Deckhand offers Windows, file, browser, desktop, Paint, and script tools."),
     ];
 
     [ObservableProperty]
@@ -90,7 +90,7 @@ public partial class ChatViewModel : ObservableObject
         Input = "";
         Messages.Add(new("You", text));
         IsBusy = true;
-        Status = "Working...";
+        Status = "";
         try
         {
             var result = await service.RunAsync(text, cancellationToken);
@@ -98,10 +98,9 @@ public partial class ChatViewModel : ObservableObject
             Messages.Add(new(result.Status == RunStatus.Failed ? "Error" : "Deckhand", result.Text));
             Status = result.Status switch
             {
-                RunStatus.AskedUser => "Waiting for your reply.",
                 RunStatus.Cancelled => "Stopped. You can enter a new request.",
                 RunStatus.Failed => "Could not complete the request. Check the model service in Settings.",
-                _ => $"Done · {result.Steps} steps · {service.ModelLabel}",
+                _ => "",
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -129,7 +128,15 @@ public partial class ChatViewModel : ObservableObject
         Messages.Clear();
         Input = "";
         AwaitingReply = false;
-        Status = service.ModelLabel;
+        Status = "";
+    }
+
+    public void ShowTool(string tool)
+    {
+        if (IsBusy)
+        {
+            Status = tool;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanStartNewRequest))]

@@ -39,11 +39,11 @@ public sealed class DesktopChatService(IApprovalPrompter approvals,
 
     public event Action<bool>? InputActiveChanged;
 
+    public event Action<string>? ToolStarted;
+
     private bool _forceNewRequest;
 
     public ModelSettings Settings { get; private set; } = new();
-
-    public string ModelLabel => $"{(Settings.IsChatRemote ? "Remote" : "Local")} model · {Settings.Chat.Model}";
 
     public void LoadSettings()
     {
@@ -82,7 +82,8 @@ public sealed class DesktopChatService(IApprovalPrompter approvals,
                                           () => EmergencyStopRequested?.Invoke(),
                                           active => InputActiveChanged?.Invoke(active));
             var skillsRoot = Path.Combine(AppContext.BaseDirectory, "app-skills");
-            var audit = new JsonlAuditLog(Path.Combine(DataFolder, "logs"));
+            var audit = new ToolStartAuditLog(new JsonlAuditLog(Path.Combine(DataFolder, "logs")),
+                                              tool => ToolStarted?.Invoke(tool));
             var dependencies = new AgentDependencies(Settings.Chat,
                                                      _model,
                                                      catalog,
@@ -228,4 +229,16 @@ appTools,
     }
 
     public void Dispose() => NewChat();
+
+    private sealed class ToolStartAuditLog(IAuditLog inner, Action<string> toolStarted) : IAuditLog
+    {
+        public void Write(AuditEntry entry)
+        {
+            inner.Write(entry);
+            if (entry.Kind == "call_start")
+            {
+                toolStarted(entry.Tool);
+            }
+        }
+    }
 }

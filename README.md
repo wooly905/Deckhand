@@ -35,7 +35,7 @@ dotnet run --project src/Deckhand.App
 
 The app is unpackaged and includes its Windows App SDK runtime, so launching it does not require MSIX registration. In Visual Studio, select `Deckhand.App` as the startup project.
 
-- Enter an English request, then click **Send** or press **Ctrl+Enter**. **Enter** inserts a new line.
+- Enter an English request, then click **Send** or press **Enter**. **Shift+Enter** inserts a new line.
 - **Stop** cancels the active request, including a pending approval or step-limit card.
 - **Ctrl+Alt+Q** stops mouse and keyboard input. Input also stops when another window becomes active.
 - Reply to a clarification in the input box, or select **Start a new request instead**.

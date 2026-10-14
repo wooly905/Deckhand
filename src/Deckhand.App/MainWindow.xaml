@@ -11,13 +11,12 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Text="Deckhand" Style="{StaticResource TitleTextBlockStyle}" FontSize="24" />
-                <TextBlock Text="Tell Deckhand what you want to do." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Enter what you want to do in Windows." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
             <Button Grid.Column="1" Content="New chat" Command="{x:Bind ViewModel.NewChatCommand}" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" VerticalAlignment="Center" />
             <Button Grid.Column="2" Content="Settings" Click="Settings_Click" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" VerticalAlignment="Center" />
@@ -54,18 +53,14 @@
         </Border>
         <StackPanel Grid.Row="4" Spacing="8">
             <Button Content="Start a new request instead" Command="{x:Bind ViewModel.StartNewRequestCommand}" Visibility="{x:Bind ReplyVisibility(ViewModel.AwaitingReply), Mode=OneWay}" />
-            <TextBox x:Name="CommandInput" Text="{x:Bind ViewModel.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="For example: open Paint" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="66" MaxHeight="135" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" PreviewKeyDown="CommandInput_PreviewKeyDown" AutomationProperties.Name="Command text" />
+            <TextBox x:Name="CommandInput" Text="{x:Bind ViewModel.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="For example: open Paint" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="66" MaxHeight="135" BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}" IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}" PreviewKeyDown="CommandInput_PreviewKeyDown" AutomationProperties.Name="Command text" />
             <Grid ColumnSpacing="12">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock Text="Ctrl+Enter to send" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="Stop" Command="{x:Bind ViewModel.SendCancelCommand}" />
-                <Button Grid.Column="2" Content="Send" Command="{x:Bind ViewModel.SendCommand}" Style="{StaticResource AccentButtonStyle}" />
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" />
+                <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Status, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Content="Stop" Command="{x:Bind ViewModel.SendCancelCommand}" />
+                <Button Grid.Column="3" Content="Send" Command="{x:Bind ViewModel.SendCommand}" Style="{StaticResource AccentButtonStyle}" />
             </Grid>
         </StackPanel>
-        <Grid Grid.Row="5" ColumnSpacing="10">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" />
-            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Status, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-        </Grid>
     </Grid>
 </Window>

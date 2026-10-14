@@ -38,6 +38,15 @@ public sealed partial class MainWindow : Window, IApprovalPrompter, IStepLimitPr
         ViewModel = new ChatViewModel(_service);
         _service.EmergencyStopRequested += () => DispatcherQueue.TryEnqueue(() => ViewModel.SendCommand.Cancel());
         _service.InputActiveChanged += active => DispatcherQueue.TryEnqueue(() => InputBanner.Visibility = active ? Visibility.Visible : Visibility.Collapsed);
+        _service.ToolStarted += tool => DispatcherQueue.TryEnqueue(() => ViewModel.ShowTool(tool));
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            // Deferred so the x:Bind IsEnabled update re-enables the TextBox first.
+            if (e.PropertyName == nameof(ChatViewModel.IsBusy) && !ViewModel.IsBusy)
+            {
+                DispatcherQueue.TryEnqueue(() => CommandInput.Focus(FocusState.Programmatic));
+            }
+        };
         if (settingsError is not null)
         {
             ViewModel.Status = settingsError;
@@ -64,11 +73,16 @@ public sealed partial class MainWindow : Window, IApprovalPrompter, IStepLimitPr
 
     private void CommandInput_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var control = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(CoreVirtualKeyStates.Down);
-        if (e.Key == VirtualKey.Enter && control && ViewModel.SendCommand.CanExecute(null))
+        if (e.Key != VirtualKey.Enter || shift)
         {
-            e.Handled = true;
+            return;
+        }
+
+        e.Handled = true;
+        if (ViewModel.SendCommand.CanExecute(null))
+        {
             ViewModel.SendCommand.Execute(null);
         }
     }
