@@ -54,7 +54,7 @@ public sealed class BrowserTools(string dataFolder) : IApprovalRule, IAsyncDispo
         Directory.CreateDirectory(profile);
         var timer = Stopwatch.StartNew();
         var launched = false;
-        PlaywrightException? lastError = null;
+        Exception? lastError = null;
         while (timer.Elapsed < TimeSpan.FromSeconds(15))
         {
             var endpoint = ReadBrowserEndpoint(profile);
@@ -64,7 +64,7 @@ public sealed class BrowserTools(string dataFolder) : IApprovalRule, IAsyncDispo
                 {
                     var browser = await playwright.Chromium.ConnectOverCDPAsync(endpoint, new()
                     {
-                        Timeout = 1000
+                        Timeout = 5000
                     });
                     var downloads = await browser.NewBrowserCDPSessionAsync();
                     await downloads.SendAsync("Browser.setDownloadBehavior", new Dictionary<string, object>
@@ -74,7 +74,9 @@ public sealed class BrowserTools(string dataFolder) : IApprovalRule, IAsyncDispo
                     await downloads.DetachAsync();
                     return browser.Contexts[0];
                 }
-                catch (PlaywrightException error)
+                // A cold-starting browser can accept the websocket before the CDP handshake completes,
+                // which Playwright reports as System.TimeoutException rather than PlaywrightException.
+                catch (Exception error) when (error is PlaywrightException or System.TimeoutException)
                 {
                     lastError = error;
                 }
