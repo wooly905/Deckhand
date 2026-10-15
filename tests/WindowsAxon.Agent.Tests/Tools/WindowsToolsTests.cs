@@ -504,8 +504,11 @@ public sealed class WindowsToolsTests : IAsyncDisposable
     public async Task Cancelled_or_timed_out_script_still_terminates_child_processes(bool timedOut)
     {
         var pidPath = Path.Combine(_folder, "stopped-child.pid");
+        var escapedPidPath = pidPath.Replace("'", "''");
+        // Publish the PID only after the file is closed, so cancellation cannot race the test's read.
         var code = "Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 120' -WindowStyle Hidden -WorkingDirectory $env:TEMP -PassThru "
-            + $"| Select-Object -ExpandProperty Id | Set-Content -LiteralPath '{pidPath.Replace("'", "''")}'\n"
+            + $"| Select-Object -ExpandProperty Id | Set-Content -LiteralPath '{escapedPidPath}.tmp'\n"
+            + $"Move-Item -LiteralPath '{escapedPidPath}.tmp' -Destination '{escapedPidPath}'\n"
             + "Start-Sleep -Seconds 120";
         var scripts = new ScriptTools(Writer(code), _folder, "test");
         var draft = JsonSerializer.SerializeToElement(await scripts.Create("powershell",
