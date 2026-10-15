@@ -2,6 +2,7 @@ using System.Text.Json;
 using WindowsAxon.Agent;
 using WindowsAxon.Agent.Approval;
 using WindowsAxon.Agent.Selection;
+using WindowsAxon.App.Updates;
 using Microsoft.Extensions.AI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -16,6 +17,12 @@ public sealed partial class MainWindow : Window, IApprovalPrompter, IStepLimitPr
     private readonly DesktopChatService _service;
     private ContentDialog? _activeDialog;
     private TaskCompletionSource<ContentDialogResult>? _promptCompletion;
+    private static readonly TimeSpan UpdateCheckDelay = TimeSpan.FromSeconds(30);
+    private static readonly HttpClient UpdateHttp = new() { Timeout = TimeSpan.FromMinutes(10) };
+    private readonly CancellationTokenSource _closing = new();
+    private readonly UpdateState _updateState = new(UpdateState.DefaultPath);
+    private ReleaseInfo? _availableUpdate;
+    private bool _updating;
 
     public ChatViewModel ViewModel
     {
@@ -55,8 +62,15 @@ public sealed partial class MainWindow : Window, IApprovalPrompter, IStepLimitPr
         InitializeComponent();
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32(460, 570));
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "WindowsAxon.ico"));
+        if (Environment.ProcessPath is { } executable)
+        {
+            UpdateInstaller.CleanupOld(executable);
+        }
+
+        _ = CheckForUpdatesAsync(_closing.Token);
         Closed += (_, _) =>
         {
+            _closing.Cancel();
             ViewModel.SendCommand.Cancel();
             _activeDialog?.Hide();
             _promptCompletion?.TrySetCanceled();
@@ -65,6 +79,119 @@ public sealed partial class MainWindow : Window, IApprovalPrompter, IStepLimitPr
     }
 
     public Visibility ReplyVisibility(bool awaitingReply) => awaitingReply ? Visibility.Visible : Visibility.Collapsed;
+
+    private static Version CurrentVersion => typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0, 0);
+
+    private async Task CheckForUpdatesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(UpdateCheckDelay, cancellationToken);
+            if (Environment.ProcessPath is { } executable)
+            {
+                UpdateInstaller.CleanupOld(executable);
+            }
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var latest = await new UpdateChecker(UpdateHttp).GetLatestAsync(timeout.Token);
+            if (latest is null || !UpdateChecker.ShouldPrompt(CurrentVersion, latest, _updateState.LoadSkippedVersion()))
+            {
+                return;
+            }
+
+            _availableUpdate = latest;
+            UpdateBar.Message = $"WindowsAxon {latest.Version} is available (you have {UpdateChecker.Normalize(CurrentVersion)}).";
+            UpdateBar.IsOpen = true;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async void UpdateNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is not { } release || _updating || ViewModel.IsBusy)
+        {
+            return;
+        }
+
+        _updating = true;
+        UpdateActions.Visibility = Visibility.Collapsed;
+        UpdateBar.Message = $"Downloading WindowsAxon {release.Version}...";
+        try
+        {
+            if (Environment.ProcessPath is not { } executable || !UpdateInstaller.IsSingleFile(executable))
+            {
+                OpenReleasePage(release);
+                UpdateBar.Message = "This copy cannot update itself. The release page was opened so you can download the update.";
+                return;
+            }
+
+            var downloaded = await new UpdateInstaller(UpdateHttp).DownloadAsync(release,
+                                                                                 Path.Combine(Path.GetTempPath(),
+                                                                                              "WindowsAxon-update"),
+                                                                                 _closing.Token);
+            if (ViewModel.IsBusy)
+            {
+                UpdateBar.Message = $"WindowsAxon {release.Version} is downloaded and will install when the current request finishes.";
+                while (ViewModel.IsBusy)
+                {
+                    await Task.Delay(500, _closing.Token);
+                }
+            }
+
+            // Runs synchronously on the UI thread after the idle check, so no request can start before Close().
+            UpdateInstaller.Install(executable,
+                                    downloaded,
+                                    path => UpdateInstaller.Launch(path, Environment.GetCommandLineArgs().Skip(1)));
+            Close();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception)
+        {
+            UpdateBar.Severity = InfoBarSeverity.Error;
+            UpdateBar.Message = "Could not install the update. The release page was opened so you can download it manually.";
+            UpdateActions.Visibility = Visibility.Visible;
+            OpenReleasePage(release);
+        }
+        finally
+        {
+            _updating = false;
+        }
+    }
+
+    private void SkipUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is { } release)
+        {
+            try
+            {
+                _updateState.SaveSkippedVersion(release.Version);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
+        UpdateBar.IsOpen = false;
+    }
+
+    private static void OpenReleasePage(ReleaseInfo release)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(release.PageUrl.AbsoluteUri)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+        }
+    }
 
     private void ConversationContent_SizeChanged(object sender, SizeChangedEventArgs e) =>
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,

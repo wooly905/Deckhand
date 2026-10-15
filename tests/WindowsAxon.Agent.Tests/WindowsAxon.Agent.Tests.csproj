@@ -24,5 +24,6 @@
     <Compile Include="..\..\src\WindowsAxon.App\WindowsSecretStore.cs" Link="Desktop\WindowsSecretStore.cs" />
     <Compile Include="..\..\src\WindowsAxon.App\WindowsAppTools.cs" Link="Desktop\WindowsAppTools.cs" />
     <Compile Include="..\..\src\WindowsAxon.App\WindowsWindowTools.cs" Link="Desktop\WindowsWindowTools.cs" />
+    <Compile Include="..\..\src\WindowsAxon.App\Updates\*.cs" Link="Desktop\Updates\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

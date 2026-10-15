@@ -66,6 +66,15 @@ To watch today's tool execution log in PowerShell:
 Get-Content "$env:LOCALAPPDATA\WindowsAxon\logs\audit-$(Get-Date -Format yyyyMMdd).jsonl" -Tail 20 -Wait
 ```
 
+## Updates
+
+Thirty seconds after each launch, WindowsAxon asks the GitHub API for the latest release of `wooly905/WindowsAxon`. No other data is sent. If the release is newer than the running version, a bar at the top of the window offers two choices:
+
+- **Update** downloads the `WindowsAxon-<version>-win-x64.exe` release asset and verifies it against its `.sha256` file. It then replaces the running executable, keeping the file name, and restarts the app. The update button is disabled while a request is running. If a request starts during the download, installation waits until it finishes. If the file cannot be replaced, for example because the folder is not writable, or the new version fails to start, the original executable is restored and the release page opens for a manual download. Copies run from build output (`dotnet run`) also open the release page instead of replacing themselves.
+- **Skip** hides the bar and stops offering that version. A newer release is offered again. The skipped version is stored in `%LOCALAPPDATA%\WindowsAxon\update.json`.
+
+Nothing is installed without selecting **Update**. If the network is unavailable or the GitHub API cannot be read, no message is shown.
+
 ## Tool catalog
 
 The operational catalog has 87 tools. `load_skill`, `read_skill_resource`, and `enable_tools` provide skill and group selection.
